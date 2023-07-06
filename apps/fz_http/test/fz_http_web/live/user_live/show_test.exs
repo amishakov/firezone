@@ -1,6 +1,5 @@
 defmodule FzHttpWeb.UserLive.ShowTest do
-  # XXX: Setting to true causes deadlocks. Figure out why.
-  use FzHttpWeb.ConnCase, async: false
+  use FzHttpWeb.ConnCase, async: true
 
   alias FzHttp.UsersFixtures
 
@@ -8,7 +7,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     setup :create_device
 
     test "includes the device name", %{admin_conn: conn, device: device} do
-      path = Routes.user_show_path(conn, :show, device.user_id)
+      path = ~p"/users/#{device.user_id}"
       {:ok, _view, html} = live(conn, path)
 
       assert html =~ device.name
@@ -19,7 +18,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     setup :create_device
 
     test "shows device details", %{admin_conn: conn, device: device} do
-      path = Routes.device_admin_show_path(conn, :show, device)
+      path = ~p"/devices/#{device}"
       {:ok, _view, html} = live(conn, path)
       assert html =~ device.name
       assert html =~ device.description
@@ -28,121 +27,117 @@ defmodule FzHttpWeb.UserLive.ShowTest do
   end
 
   describe "authenticated new device" do
+    @test_pubkey "8IkpsAXiqhqNdc9PJS76YeJjig4lyTBaf8Rm7gTApXk="
+
     @device_id_regex ~r/device-(?<device_id>.*)-inserted-at/
     @valid_params %{
       "device" => %{
-        "public_key" => "test-pubkey",
+        "public_key" => @test_pubkey,
         "name" => "new_name",
         "description" => "new_description"
       }
     }
-    @invalid_params %{
-      "device" => %{
-        "public_key" => "test-pubkey",
-        "name" => ""
-      }
-    }
-    @allowed_ips "2.2.2.2"
+    @allowed_ips ["2.2.2.2"]
     @allowed_ips_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_allowed_ips" => "false",
+        "public_key" => @test_pubkey,
+        "use_default_allowed_ips" => "false",
         "allowed_ips" => @allowed_ips
       }
     }
     @allowed_ips_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_allowed_ips" => "true",
+        "public_key" => @test_pubkey,
+        "use_default_allowed_ips" => "true",
         "allowed_ips" => @allowed_ips
       }
     }
-    @dns "8.8.8.8, 8.8.4.4"
+    @dns ["8.8.8.8", "8.8.4.4"]
     @dns_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_dns" => "false",
+        "public_key" => @test_pubkey,
+        "use_default_dns" => "false",
         "dns" => @dns
       }
     }
     @dns_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_dns" => "true",
+        "public_key" => @test_pubkey,
+        "use_default_dns" => "true",
         "dns" => @dns
       }
     }
     @wireguard_endpoint "6.6.6.6"
     @endpoint_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_endpoint" => "false",
+        "public_key" => @test_pubkey,
+        "use_default_endpoint" => "false",
         "endpoint" => @wireguard_endpoint
       }
     }
     @endpoint_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_endpoint" => "true",
+        "public_key" => @test_pubkey,
+        "use_default_endpoint" => "true",
         "endpoint" => @wireguard_endpoint
       }
     }
     @mtu_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_mtu" => "false",
+        "public_key" => @test_pubkey,
+        "use_default_mtu" => "false",
         "mtu" => "1280"
       }
     }
     @mtu_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_mtu" => "true",
+        "public_key" => @test_pubkey,
+        "use_default_mtu" => "true",
         "mtu" => "1280"
       }
     }
     @persistent_keepalive_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_persistent_keepalive" => "false",
+        "public_key" => @test_pubkey,
+        "use_default_persistent_keepalive" => "false",
         "persistent_keepalive" => "120"
       }
     }
     @persistent_keepalive_unchanged %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_persistent_keepalive" => "true",
+        "public_key" => @test_pubkey,
+        "use_default_persistent_keepalive" => "true",
         "persistent_keepalive" => "5"
       }
     }
     @default_allowed_ips_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_allowed_ips" => "false"
+        "public_key" => @test_pubkey,
+        "use_default_allowed_ips" => "false"
       }
     }
     @default_dns_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_dns" => "false"
+        "public_key" => @test_pubkey,
+        "use_default_dns" => "false"
       }
     }
     @default_endpoint_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_endpoint" => "false"
+        "public_key" => @test_pubkey,
+        "use_default_endpoint" => "false"
       }
     }
     @default_mtu_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_mtu" => "false"
+        "public_key" => @test_pubkey,
+        "use_default_mtu" => "false"
       }
     }
     @default_persistent_keepalive_change %{
       "device" => %{
-        "public_key" => "test-pubkey",
-        "use_site_persistent_keepalive" => "false"
+        "public_key" => @test_pubkey,
+        "use_default_persistent_keepalive" => "false"
       }
     }
 
@@ -152,18 +147,18 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     end
 
     test "opens modal", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}"
       {:ok, view, _html} = live(conn, path)
 
       view
       |> element("#add-device-button")
       |> render_click()
 
-      assert_patched(view, Routes.user_show_path(conn, :new_device, user.id))
+      assert_patch(view, ~p"/users/#{user.id}/new_device")
     end
 
     test "allows name changes", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -175,11 +170,11 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ @valid_params["device"]["name"]
     end
 
-    test "prevents allowed_ips changes when use_site_allowed_ips is true", %{
+    test "prevents allowed_ips changes when use_default_allowed_ips is true", %{
       admin_conn: conn,
       admin_user: user
     } do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -190,11 +185,11 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents dns changes when use_site_dns is true", %{
+    test "prevents dns changes when use_default_dns is true", %{
       admin_conn: conn,
       admin_user: user
     } do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -205,11 +200,11 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents endpoint changes when use_site_endpoint is true", %{
+    test "prevents endpoint changes when use_default_endpoint is true", %{
       admin_conn: conn,
       admin_user: user
     } do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -220,11 +215,11 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents mtu changes when use_site_mtu is true", %{
+    test "prevents mtu changes when use_default_mtu is true", %{
       admin_conn: conn,
       admin_user: user
     } do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -235,12 +230,12 @@ defmodule FzHttpWeb.UserLive.ShowTest do
       assert test_view =~ "must not be present"
     end
 
-    test "prevents persistent_keepalive changes when use_site_persistent_keepalive is true",
+    test "prevents persistent_keepalive changes when use_default_persistent_keepalive is true",
          %{
            admin_conn: conn,
            admin_user: user
          } do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -252,7 +247,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     end
 
     test "allows allowed_ips changes", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -262,15 +257,18 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
       assert test_view =~ "Device added!"
 
-      path = Routes.user_show_path(conn, :show, user.id)
+      path = ~p"/users/#{user.id}"
       {:ok, _view, html} = live(conn, path)
-      path = Routes.device_admin_show_path(conn, :show, device_id(html))
+      path = ~p"/devices/#{device_id(html)}"
       {:ok, _view, html} = live(conn, path)
-      assert html =~ @allowed_ips
+
+      for allowed_ip <- @allowed_ips do
+        assert html =~ allowed_ip
+      end
     end
 
     test "allows dns changes", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -280,15 +278,18 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
       assert test_view =~ "Device added!"
 
-      path = Routes.user_show_path(conn, :show, user.id)
+      path = ~p"/users/#{user.id}"
       {:ok, _view, html} = live(conn, path)
-      path = Routes.device_admin_show_path(conn, :show, device_id(html))
+      path = ~p"/devices/#{device_id(html)}"
       {:ok, _view, html} = live(conn, path)
-      assert html =~ @dns
+
+      for dns <- @dns do
+        assert html =~ dns
+      end
     end
 
     test "allows endpoint changes", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -298,15 +299,15 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
       assert test_view =~ "Device added!"
 
-      path = Routes.user_show_path(conn, :show, user.id)
+      path = ~p"/users/#{user.id}"
       {:ok, _view, html} = live(conn, path)
-      path = Routes.device_admin_show_path(conn, :show, device_id(html))
+      path = ~p"/devices/#{device_id(html)}"
       {:ok, _view, html} = live(conn, path)
       assert html =~ @wireguard_endpoint
     end
 
     test "allows mtu changes", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -316,15 +317,15 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
       assert test_view =~ "Device added!"
 
-      path = Routes.user_show_path(conn, :show, user.id)
+      path = ~p"/users/#{user.id}"
       {:ok, _view, html} = live(conn, path)
-      path = Routes.device_admin_show_path(conn, :show, device_id(html))
+      path = ~p"/devices/#{device_id(html)}"
       {:ok, _view, html} = live(conn, path)
       assert html =~ "1280"
     end
 
     test "allows persistent_keepalive changes", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -334,27 +335,29 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
       assert test_view =~ "Device added!"
 
-      path = Routes.user_show_path(conn, :show, user.id)
+      path = ~p"/users/#{user.id}"
       {:ok, _view, html} = live(conn, path)
-      path = Routes.device_admin_show_path(conn, :show, device_id(html))
+      path = ~p"/devices/#{device_id(html)}"
       {:ok, _view, html} = live(conn, path)
       assert html =~ "120"
     end
 
-    test "prevents empty names", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+    test "generates a name when it's empty", %{admin_conn: conn, admin_user: user} do
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
+
+      params = Map.put(@valid_params, "name", "")
 
       test_view =
         view
         |> form("#create-device")
-        |> render_submit(@invalid_params)
+        |> render_submit(params)
 
-      assert test_view =~ "can&#39;t be blank"
+      assert test_view =~ "Device added!"
     end
 
-    test "on use_site_allowed_ips change", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+    test "on use_default_allowed_ips change", %{admin_conn: conn, admin_user: user} do
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -368,8 +371,8 @@ defmodule FzHttpWeb.UserLive.ShowTest do
              """
     end
 
-    test "on use_site_dns change", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+    test "on use_default_dns change", %{admin_conn: conn, admin_user: user} do
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -382,8 +385,8 @@ defmodule FzHttpWeb.UserLive.ShowTest do
              """
     end
 
-    test "on use_site_endpoint change", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+    test "on use_default_endpoint change", %{admin_conn: conn, admin_user: user} do
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -396,8 +399,8 @@ defmodule FzHttpWeb.UserLive.ShowTest do
              """
     end
 
-    test "on use_site_mtu change", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+    test "on use_default_mtu change", %{admin_conn: conn, admin_user: user} do
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -410,8 +413,8 @@ defmodule FzHttpWeb.UserLive.ShowTest do
              """
     end
 
-    test "on use_site_persistent_keepalive change", %{admin_conn: conn, admin_user: user} do
-      path = Routes.user_show_path(conn, :new_device, user.id)
+    test "on use_default_persistent_keepalive change", %{admin_conn: conn, admin_user: user} do
+      path = ~p"/users/#{user.id}/new_device"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -429,14 +432,14 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     setup :create_device
 
     test "successful", %{admin_conn: conn, device: device} do
-      path = Routes.device_admin_show_path(conn, :show, device)
+      path = ~p"/devices/#{device}"
       {:ok, view, _html} = live(conn, path)
 
       view
       |> element("button", "Delete Device #{device.name}")
       |> render_click()
 
-      _flash = assert_redirected(view, Routes.device_admin_index_path(conn, :index))
+      assert_redirect(view, ~p"/devices")
     end
   end
 
@@ -444,15 +447,15 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     setup :create_device
 
     test "redirects to sign in", %{unauthed_conn: conn, device: device} do
-      path = Routes.user_show_path(conn, :show, device.user_id)
-      expected_path = Routes.root_path(conn, :index)
+      path = ~p"/users/#{device.user_id}"
+      expected_path = ~p"/"
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
 
   describe "delete self" do
     test "displays flash message with error", %{admin_user: user, admin_conn: conn} do
-      path = Routes.user_show_path(conn, :show, user.id)
+      path = ~p"/users/#{user.id}"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -469,7 +472,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
     test "deletes the user", %{admin_conn: conn, users: users} do
       user = List.last(users)
-      path = Routes.user_show_path(conn, :show, user.id)
+      path = ~p"/users/#{user.id}"
       {:ok, view, _html} = live(conn, path)
 
       view
@@ -478,19 +481,19 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
       {new_path, flash} = assert_redirect(view)
       assert flash["info"] == "User deleted successfully."
-      assert new_path == Routes.user_index_path(conn, :index)
+      assert new_path == ~p"/users"
     end
   end
 
   describe "user role" do
     setup do
-      admin_user = UsersFixtures.user(role: :admin)
-      unprivileged_user = UsersFixtures.user(role: :unprivileged)
+      admin_user = UsersFixtures.create_user_with_role(:admin)
+      unprivileged_user = UsersFixtures.create_user_with_role(:unprivileged)
       {:ok, other_admin_user: admin_user, unprivileged_user: unprivileged_user}
     end
 
     test "promotes to admin", %{admin_conn: conn, unprivileged_user: unprivileged_user} do
-      path = Routes.user_show_path(conn, :show, unprivileged_user.id)
+      path = ~p"/users/#{unprivileged_user}"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -503,7 +506,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     end
 
     test "demotes to unprivileged", %{admin_conn: conn, other_admin_user: other_admin_user} do
-      path = Routes.user_show_path(conn, :show, other_admin_user.id)
+      path = ~p"/users/#{other_admin_user}"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -516,7 +519,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     end
 
     test "demotes self", %{admin_conn: conn, admin_user: admin_user} do
-      path = Routes.user_show_path(conn, :show, admin_user.id)
+      path = ~p"/users/#{admin_user}"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -524,7 +527,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         |> element("button", "demote")
         |> render_click()
 
-      assert test_view =~ "not supported"
+      assert test_view =~ "You cannot change your own role"
       assert test_view =~ "<td>admin</td>"
     end
   end
@@ -534,13 +537,13 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
     setup %{users: users, admin_conn: conn} do
       user = List.last(users)
-      path = Routes.user_show_path(conn, :edit, user.id)
+      path = ~p"/users/#{user.id}/edit"
       {:ok, view, _html} = live(conn, path)
 
-      success = fn conn, view, user ->
+      success = fn _conn, view, user ->
         {new_path, flash} = assert_redirect(view)
         assert flash["info"] == "User updated successfully."
-        assert new_path == Routes.user_show_path(conn, :show, user)
+        assert new_path == ~p"/users/#{user.id}"
       end
 
       %{success: success, view: view, admin_conn: conn, user: user}
@@ -610,7 +613,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
         |> element("form#user-form")
         |> render_submit(@invalid_attrs)
 
-      assert test_view =~ "has invalid format"
+      assert test_view =~ "is invalid email address"
       assert test_view =~ "should be at least 12 character(s)"
     end
   end
@@ -621,7 +624,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
 
     test "enable user", %{admin_conn: conn, unprivileged_user: user} do
       user = user |> change |> put_change(:disabled_at, DateTime.utc_now()) |> Repo.update!()
-      path = Routes.user_show_path(conn, :show, user.id)
+      path = ~p"/users/#{user.id}"
 
       {:ok, view, _html} = live(conn, path)
 
@@ -635,7 +638,7 @@ defmodule FzHttpWeb.UserLive.ShowTest do
     end
 
     test "disable user", %{admin_conn: conn, unprivileged_user: user} do
-      path = Routes.user_show_path(conn, :show, user.id)
+      path = ~p"/users/#{user.id}"
 
       {:ok, view, _html} = live(conn, path)
 

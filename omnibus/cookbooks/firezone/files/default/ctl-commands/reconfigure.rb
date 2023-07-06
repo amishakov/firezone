@@ -14,10 +14,10 @@ def capture
 
   return unless telemetry_id
 
-  uri = URI('https://telemetry.firez.one/capture/')
+  uri = URI('https://t.firez.one/capture/')
   data = {
     api_key: 'phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK',
-    event: 'firezone-ctl create-or-reset-admin',
+    event: 'firezone-ctl reconfigure',
     properties: {
       distinct_id: telemetry_id
     }
@@ -25,6 +25,8 @@ def capture
   return if File.exist?('/var/opt/firezone/.disable_telemetry') || ENV['TELEMETRY_ENABLED'] == 'false'
 
   Net::HTTP.post(uri, data.to_json, 'Content-Type' => 'application/json')
+rescue StandardError => e
+  e
 end
 # rubocop:enable Metrics/MethodLength
 

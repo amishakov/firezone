@@ -1,9 +1,0 @@
-localhost
-
-log
-
-reverse_proxy * localhost:4000
-
-encode gzip
-
-tls internal

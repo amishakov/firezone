@@ -1,41 +1,85 @@
 defmodule FzHttpWeb.AuthControllerTest do
   use FzHttpWeb.ConnCase, async: true
+  alias FzHttp.ConfigFixtures
+  alias FzHttp.Repo
 
-  import Mox
+  setup do
+    {bypass, _openid_connect_providers_attrs} =
+      ConfigFixtures.start_openid_providers([
+        "google",
+        "okta",
+        "auth0",
+        "azure",
+        "onelogin",
+        "keycloak",
+        "vault"
+      ])
+
+    FzHttp.Config.put_config!(
+      :saml_identity_providers,
+      [FzHttp.ConfigFixtures.saml_identity_providers_attrs(%{"label" => "SAML"})]
+    )
+
+    %{bypass: bypass}
+  end
 
   describe "new" do
     setup [:create_user]
 
     test "unauthed: loads the sign in form", %{unauthed_conn: conn} do
-      expect(OpenIDConnect.Mock, :authorization_uri, fn _, _ -> "https://auth.url" end)
-      test_conn = get(conn, Routes.root_path(conn, :index))
+      test_conn = get(conn, ~p"/")
 
-      # Assert that we email, OIDC and Oauth2 buttons provided
+      # Assert that we have email, OIDC and Oauth2 buttons provided
       for expected <- [
             "Sign in with email",
             "Sign in with OIDC Google",
-            "Sign in with Google",
-            "Sign in with Okta"
+            "Sign in with OIDC Okta",
+            "Sign in with OIDC Auth0",
+            "Sign in with OIDC Azure",
+            "Sign in with OIDC Onelogin",
+            "Sign in with OIDC Keycloak",
+            "Sign in with OIDC Vault",
+            "Sign in with SAML"
           ] do
         assert html_response(test_conn, 200) =~ expected
       end
     end
 
     test "authed as admin: redirects to users page", %{admin_conn: conn} do
-      test_conn = get(conn, Routes.root_path(conn, :index))
+      test_conn = get(conn, ~p"/")
 
-      assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+      assert redirected_to(test_conn) == ~p"/users"
     end
 
     test "authed as unprivileged: redirects to user_devices page", %{unprivileged_conn: conn} do
-      test_conn = get(conn, Routes.root_path(conn, :index))
+      test_conn = get(conn, ~p"/")
 
-      assert redirected_to(test_conn) == Routes.device_unprivileged_index_path(test_conn, :index)
+      assert redirected_to(test_conn) == ~p"/user_devices"
     end
   end
 
   describe "create session" do
     setup [:create_user]
+
+    test "GET /auth/identity/callback redirects to /", %{unauthed_conn: conn} do
+      assert redirected_to(get(conn, ~p"/auth/identity/callback")) == ~p"/"
+    end
+
+    test "GET /auth/identity omits forgot password link when local_auth disabled", %{
+      unauthed_conn: conn
+    } do
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
+      test_conn = get(conn, ~p"/auth/identity")
+
+      assert text_response(test_conn, 404) == "Local auth disabled"
+    end
+
+    test "when local_auth is disabled responds with 404", %{unauthed_conn: conn} do
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
+      test_conn = post(conn, ~p"/auth/identity/callback", %{})
+
+      assert text_response(test_conn, 404) == "Local auth disabled"
+    end
 
     test "invalid email", %{unauthed_conn: conn} do
       params = %{
@@ -43,10 +87,12 @@ defmodule FzHttpWeb.AuthControllerTest do
         "password" => "test"
       }
 
-      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
+      test_conn = post(conn, ~p"/auth/identity/callback", params)
 
-      assert test_conn.request_path == Routes.auth_path(test_conn, :callback, :identity)
-      assert get_flash(test_conn, :error) == "Error signing in: invalid_credentials"
+      assert test_conn.request_path == ~p"/auth/identity/callback"
+
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
+               "Error signing in: user credentials are invalid or user does not exist"
     end
 
     test "invalid password", %{unauthed_conn: conn, user: user} do
@@ -55,10 +101,12 @@ defmodule FzHttpWeb.AuthControllerTest do
         "password" => "invalid"
       }
 
-      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
+      test_conn = post(conn, ~p"/auth/identity/callback", params)
 
-      assert test_conn.request_path == Routes.auth_path(test_conn, :callback, :identity)
-      assert get_flash(test_conn, :error) == "Error signing in: invalid_credentials"
+      assert test_conn.request_path == ~p"/auth/identity/callback"
+
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
+               "Error signing in: user credentials are invalid or user does not exist"
     end
 
     test "valid params", %{unauthed_conn: conn, user: user} do
@@ -67,9 +115,9 @@ defmodule FzHttpWeb.AuthControllerTest do
         "password" => "password1234"
       }
 
-      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
+      test_conn = post(conn, ~p"/auth/identity/callback", params)
 
-      assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+      assert redirected_to(test_conn) == ~p"/users"
       assert current_user(test_conn).id == user.id
     end
 
@@ -79,48 +127,116 @@ defmodule FzHttpWeb.AuthControllerTest do
         "password" => "password1234"
       }
 
-      restore_env(:local_auth_enabled, false, &on_exit/1)
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
 
-      test_conn = post(conn, Routes.auth_path(conn, :callback, :identity), params)
-      assert text_response(test_conn, 401) == "Local auth disabled"
+      test_conn = post(conn, ~p"/auth/identity/callback", params)
+      assert text_response(test_conn, 404) == "Local auth disabled"
+    end
+  end
+
+  describe "GET /auth/reset_password" do
+    test "protects route when local_auth is disabled", %{unauthed_conn: conn} do
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
+      test_conn = get(conn, ~p"/auth/reset_password")
+
+      assert text_response(test_conn, 404) == "Local auth disabled"
     end
   end
 
   describe "creating session from OpenID Connect" do
-    setup [:create_user]
+    setup :create_user
 
-    test "when a user returns with a valid claim", %{unauthed_conn: conn, user: user} do
-      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{"id_token" => "abc"}} end)
+    @key "fz_oidc_state"
+    @state "test"
 
-      expect(OpenIDConnect.Mock, :verify, fn _, _ ->
-        {:ok, %{"email" => user.email, "sub" => "12345"}}
-      end)
+    @params %{
+      "code" => "MyFaketoken",
+      "provider" => "google",
+      "state" => @state
+    }
 
-      params = %{
-        "code" => "MyFaketoken",
-        "provider" => "google"
-      }
+    setup %{unauthed_conn: conn} = context do
+      signed_state =
+        Plug.Crypto.sign(
+          FzHttp.Config.fetch_env!(:fz_http, FzHttpWeb.Endpoint)[:secret_key_base],
+          @key <> "_cookie",
+          @state,
+          key: Plug.Keys,
+          max_age: context[:max_age] || 300
+        )
 
-      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), params)
-
-      assert redirected_to(test_conn) == Routes.user_index_path(test_conn, :index)
+      {:ok, unauthed_conn: put_req_cookie(conn, "fz_oidc_state", signed_state)}
     end
 
-    @moduletag :capture_log
-    test "when a user returns with an invalid claim", %{unauthed_conn: conn} do
-      expect(OpenIDConnect.Mock, :fetch_tokens, fn _, _ -> {:ok, %{}} end)
+    test "when a user returns with a valid claim", %{
+      unauthed_conn: conn,
+      user: user,
+      bypass: bypass
+    } do
+      jwk = ConfigFixtures.jwks_attrs()
 
-      expect(OpenIDConnect.Mock, :verify, fn _, _ ->
-        {:error, "Invalid token for user!"}
-      end)
-
-      params = %{
-        "code" => "MyFaketoken",
-        "provider" => "google"
+      claims = %{
+        "email" => user.email,
+        "sub" => user.id,
+        "aud" => "google-client-id",
+        "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix()
       }
 
-      test_conn = get(conn, Routes.auth_oidc_path(conn, :callback, "google"), params)
-      assert get_flash(test_conn, :error) == "OpenIDConnect Error: Invalid token for user!"
+      {_alg, token} =
+        jwk
+        |> JOSE.JWK.from()
+        |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
+        |> JOSE.JWS.compact()
+
+      ConfigFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+
+      test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
+      assert redirected_to(test_conn) == ~p"/users"
+
+      assert get_session(test_conn, "id_token")
+    end
+
+    test "when a user returns with an invalid claim", %{unauthed_conn: conn, bypass: bypass} do
+      jwk = ConfigFixtures.jwks_attrs()
+
+      claims = %{
+        "email" => "foo@example.com",
+        "sub" => Ecto.UUID.generate(),
+        "exp" => DateTime.utc_now() |> DateTime.add(10, :second) |> DateTime.to_unix(),
+        "aud" => "google-client-id"
+      }
+
+      {_alg, token} =
+        jwk
+        |> JOSE.JWK.from()
+        |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
+        |> JOSE.JWS.compact()
+
+      ConfigFixtures.expect_refresh_token(bypass, %{"id_token" => token})
+
+      test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
+
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
+               "Error signing in: user not found and auto_create_users disabled"
+    end
+
+    test "when a user returns with an invalid state", %{unauthed_conn: conn} do
+      test_conn =
+        get(conn, ~p"/auth/oidc/google/callback", %{
+          @params
+          | "state" => "not_valid"
+        })
+
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
+               "An OpenIDConnect error occurred. Details: \"Cannot verify state\""
+    end
+
+    @tag max_age: 0
+    test "when a user returns with an expired state", %{unauthed_conn: conn} do
+      test_conn = get(conn, ~p"/auth/oidc/google/callback", @params)
+
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :error) ==
+               "An OpenIDConnect error occurred. Details: \"Cannot verify state\""
     end
   end
 
@@ -128,39 +244,57 @@ defmodule FzHttpWeb.AuthControllerTest do
     setup :create_user
 
     test "user signed in", %{admin_conn: conn} do
-      test_conn = delete(conn, Routes.auth_path(conn, :delete))
-      assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
+      test_conn = delete(conn, ~p"/sign_out")
+      assert redirected_to(test_conn) == ~p"/"
     end
 
     test "user not signed in", %{unauthed_conn: conn} do
-      test_conn = delete(conn, Routes.auth_path(conn, :delete))
-      assert redirected_to(test_conn) == Routes.root_path(test_conn, :index)
+      test_conn = delete(conn, ~p"/sign_out")
+      assert redirected_to(test_conn) == ~p"/"
     end
   end
 
   describe "getting magic link" do
     setup :create_user
 
-    import Swoosh.TestAssertions
+    test "redirects to root path", %{unauthed_conn: conn, user: user} do
+      refute user.sign_in_token
 
-    test "sends a magic link in email", %{unauthed_conn: conn, user: user} do
-      post(conn, Routes.auth_path(conn, :magic_link), %{"email" => user.email})
+      test_conn = post(conn, ~p"/auth/magic_link", %{"email" => user.email})
 
-      Process.sleep(100)
-      assert_email_sent(subject: "Firezone Magic Link", to: [{"", user.email}])
+      assert redirected_to(test_conn) == ~p"/"
+
+      assert Phoenix.Flash.get(test_conn.assigns.flash, :info) ==
+               "Please check your inbox for the magic link."
+
+      user = Repo.get(FzHttp.Users.User, user.id)
+      assert user.sign_in_token_hash
+
+      assert_receive {:email, email}
+
+      assert email.subject == "Firezone Magic Link"
+      assert email.to == [{"", user.email}]
+      assert email.text_body =~ "/auth/magic/#{user.id}/"
+
+      token = String.split(email.assigns.link, "/") |> List.last()
+
+      assert {:ok, _user} = FzHttp.Users.consume_sign_in_token(user, token)
     end
   end
 
   describe "when using magic link" do
     setup :create_user
 
-    alias FzHttp.Repo
+    setup context do
+      {:ok, user} = FzHttp.Users.request_sign_in_token(context.user)
+      Map.put(context, :user, user)
+    end
 
     test "user sign_in_token is cleared", %{unauthed_conn: conn, user: user} do
       assert not is_nil(user.sign_in_token)
       assert not is_nil(user.sign_in_token_created_at)
 
-      get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
+      get(conn, ~p"/auth/magic/#{user.id}/#{user.sign_in_token}")
 
       user = Repo.reload!(user)
 
@@ -169,7 +303,7 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
 
     test "user last signed in with magic_link provider", %{unauthed_conn: conn, user: user} do
-      get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
+      get(conn, ~p"/auth/magic/#{user.id}/#{user.sign_in_token}")
 
       user = Repo.reload!(user)
 
@@ -177,16 +311,45 @@ defmodule FzHttpWeb.AuthControllerTest do
     end
 
     test "user is signed in", %{unauthed_conn: conn, user: user} do
-      test_conn = get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
+      test_conn = get(conn, ~p"/auth/magic/#{user.id}/#{user.sign_in_token}")
 
       assert current_user(test_conn).id == user.id
     end
 
     test "prevents signing in when local_auth_disabled", %{unauthed_conn: conn, user: user} do
-      restore_env(:local_auth_enabled, false, &on_exit/1)
+      FzHttp.Config.put_config!(:local_auth_enabled, false)
 
-      test_conn = get(conn, Routes.auth_path(conn, :magic_sign_in, user.sign_in_token))
-      assert text_response(test_conn, 401) == "Local auth disabled"
+      test_conn = get(conn, ~p"/auth/magic/#{user.id}/#{user.sign_in_token}")
+      assert text_response(test_conn, 404) == "Local auth disabled"
+    end
+  end
+
+  describe "oidc signout url" do
+    @tag session: [login_method: "okta", id_token: "abc"]
+    test "redirects to oidc end_session_uri", %{admin_conn: conn} do
+      query =
+        URI.encode_query(%{
+          "id_token_hint" => "abc",
+          "post_logout_redirect_uri" => FzHttp.Config.fetch_env!(:fz_http, :external_url),
+          "client_id" => "okta-client-id"
+        })
+
+      complete_uri =
+        "https://example.com"
+        |> URI.merge("?#{query}")
+        |> URI.to_string()
+
+      test_conn = delete(conn, ~p"/sign_out")
+      assert redirected_to(test_conn) == complete_uri
+    end
+  end
+
+  describe "oidc signin url" do
+    test "redirects to oidc auth uri", %{unauthed_conn: conn, bypass: bypass} do
+      test_conn = get(conn, ~p"/auth/oidc/google")
+
+      bypass_url = "http://localhost:#{bypass.port}/authorize"
+      assert String.starts_with?(redirected_to(test_conn), bypass_url)
     end
   end
 end

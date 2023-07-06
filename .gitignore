@@ -1,6 +1,8 @@
 # macOS cruft
 .DS_Store
 
+priv/pki/authorities/local/
+
 # The directory Mix will write compiled artifacts to.
 /_build/
 
@@ -58,6 +60,12 @@ npm-debug.log
 /*.deb
 /*.rpm
 
-
 # Test screenshots
 apps/fz_http/screenshots
+
+# WG configs generated in acceptance tests
+*.conf
+
+# Auto generated private key
+apps/fz_http/priv/wg_dev_private_key
+apps/fz_http/priv/static/uploads

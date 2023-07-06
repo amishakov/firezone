@@ -25,7 +25,9 @@ defmodule FzHttpWeb do
       import FzHttpWeb.Gettext
       import Phoenix.LiveView.Controller
       import FzHttpWeb.ControllerHelpers
-      alias FzHttpWeb.Router.Helpers, as: Routes
+      import FzHttpWeb.DocHelpers
+
+      unquote(verified_routes())
     end
   end
 
@@ -36,30 +38,40 @@ defmodule FzHttpWeb do
         namespace: FzHttpWeb
 
       # Import convenience functions from controllers
-      import Phoenix.Controller, only: [get_flash: 1, get_flash: 2, view_module: 1]
+      import Phoenix.Controller, only: [view_module: 1]
 
       # Use all HTML functionality (forms, tags, etc)
       use Phoenix.HTML
 
+      # Use all LiveView functionality
+      use Phoenix.Component, global_prefixes: ~w(x-)
+
       import FzHttpWeb.ErrorHelpers
       import FzHttpWeb.AuthorizationHelpers
       import FzHttpWeb.Gettext
-      import Phoenix.LiveView.Helpers
-      alias FzHttpWeb.Router.Helpers, as: Routes
+      import FzHttpWeb.LiveHelpers
 
-      def render_common(template, assigns \\ []) do
-        render(FzHttpWeb.CommonView, template, assigns)
-      end
+      unquote(verified_routes())
     end
   end
 
   def live_view do
     quote do
-      use Phoenix.LiveView, layout: {FzHttpWeb.LayoutView, "live.html"}
+      use Phoenix.LiveView, layout: {FzHttpWeb.LayoutView, :live}
       import FzHttpWeb.LiveHelpers
+
       alias Phoenix.LiveView.JS
 
-      @events_module Application.compile_env!(:fz_http, :events_module)
+      unquote(view_helpers())
+    end
+  end
+
+  def live_view_without_layout do
+    quote do
+      use Phoenix.LiveView
+      import FzHttpWeb.LiveHelpers
+
+      alias Phoenix.LiveView.JS
 
       unquote(view_helpers())
     end
@@ -67,10 +79,10 @@ defmodule FzHttpWeb do
 
   def live_component do
     quote do
+      import Phoenix.LiveView
       use Phoenix.LiveComponent
+      use Phoenix.Component, global_prefixes: ~w(x-)
       import FzHttpWeb.LiveHelpers
-
-      @events_module Application.compile_env!(:fz_http, :events_module)
 
       unquote(view_helpers())
     end
@@ -92,13 +104,19 @@ defmodule FzHttpWeb do
     end
   end
 
+  def helper do
+    quote do
+      unquote(verified_routes())
+    end
+  end
+
   defp view_helpers do
     quote do
       # Use all HTML functionality (forms, tags, etc)
       use Phoenix.HTML
 
       # Import LiveView helpers (live_render, live_component, live_patch, etc)
-      import Phoenix.LiveView.Helpers
+      import Phoenix.Component
 
       # Import basic rendering functionality (render, render_layout, etc)
       import Phoenix.View
@@ -108,7 +126,19 @@ defmodule FzHttpWeb do
 
       import FzHttpWeb.ErrorHelpers
       import FzHttpWeb.Gettext
-      alias FzHttpWeb.Router.Helpers, as: Routes
+
+      unquote(verified_routes())
+    end
+  end
+
+  def static_paths, do: ~w(dist fonts images uploads robots.txt)
+
+  def verified_routes do
+    quote do
+      use Phoenix.VerifiedRoutes,
+        endpoint: FzHttpWeb.Endpoint,
+        router: FzHttpWeb.Router,
+        statics: FzHttpWeb.static_paths()
     end
   end
 

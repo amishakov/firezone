@@ -212,8 +212,8 @@ class Firezone
 
       # NOTE: All these variables must be Strings
       env = {
-        'EGRESS_INTERFACE' => attributes['egress_interface'],
-        'NFT_PATH' => "#{attributes['install_directory']}/embedded/sbin/nft",
+        'GATEWAY_EGRESS_INTERFACE' => attributes['egress_interface'],
+        'GATEWAY_NFT_PATH' => "#{attributes['install_directory']}/embedded/sbin/nft",
         'MIX_ENV' => 'prod',
         'DATABASE_NAME' => attributes['database']['name'],
         'DATABASE_USER' => attributes['database']['user'],
@@ -224,14 +224,17 @@ class Firezone
         'DATABASE_SSL_OPTS' => attributes['database']['ssl_opts'].to_json,
         'DATABASE_PARAMETERS' => attributes['database']['parameters'].to_json,
         'PHOENIX_LISTEN_ADDRESS' => attributes['phoenix']['listen_address'].to_s,
-        'PHOENIX_PORT' => attributes['phoenix']['port'].to_s,
+        'PHOENIX_HTTP_PORT' => attributes['phoenix']['port'].to_s,
+        'PHOENIX_EXTERNAL_TRUSTED_PROXIES' =>
+          Chef::JSONCompat.to_json(attributes['phoenix']['external_trusted_proxies']),
+        'PHOENIX_PRIVATE_CLIENTS' => Chef::JSONCompat.to_json(attributes['phoenix']['private_clients']),
         'EXTERNAL_URL' => attributes['external_url'] || fqdn_url,
-        'ADMIN_EMAIL' => attributes['admin_email'],
+        'DEFAULT_ADMIN_EMAIL' => attributes['admin_email'],
         'WIREGUARD_INTERFACE_NAME' => attributes['wireguard']['interface_name'],
         'WIREGUARD_PORT' => attributes['wireguard']['port'].to_s,
         'WIREGUARD_MTU' => attributes['wireguard']['mtu'].to_s,
-        'WIREGUARD_ENDPOINT' => attributes['wireguard']['endpoint'].to_s,
-        'WIREGUARD_DNS' => attributes['wireguard']['dns'].to_s,
+        'DEFAULT_CLIENT_ENDPOINT' => attributes['wireguard']['endpoint'].to_s,
+        'DEFAULT_CLIENT_DNS' => attributes['wireguard']['dns'].to_s,
         'WIREGUARD_ALLOWED_IPS' => attributes['wireguard']['allowed_ips'].to_s,
         'WIREGUARD_PERSISTENT_KEEPALIVE' => attributes['wireguard']['persistent_keepalive'].to_s,
         'WIREGUARD_IPV4_ENABLED' => attributes['wireguard']['ipv4']['enabled'].to_s,
@@ -244,6 +247,8 @@ class Firezone
         'WIREGUARD_IPV6_ADDRESS' => attributes['wireguard']['ipv6']['address'],
         'MAX_DEVICES_PER_USER' => attributes['max_devices_per_user'].to_s,
         'ALLOW_UNPRIVILEGED_DEVICE_MANAGEMENT' => attributes['allow_unprivileged_device_management'].to_s,
+        'ALLOW_UNPRIVILEGED_DEVICE_CONFIGURATION' => attributes['allow_unprivileged_device_configuration'].to_s,
+
         # Allow env var to override config
         'TELEMETRY_ENABLED' => ENV.fetch('TELEMETRY_ENABLED',
                                          attributes['telemetry']['enabled'] == false ? 'false' : 'true'),
@@ -252,30 +257,26 @@ class Firezone
         'CONNECTIVITY_CHECKS_INTERVAL' => attributes['connectivity_checks']['interval'].to_s,
 
         # Outbound Emails
-        'OUTBOUND_EMAIL_PROVIDER' => attributes['outbound_email']['provider'],
-        'OUTBOUND_EMAIL_CONFIGS' => attributes['outbound_email']['configs'].to_json,
+        'OUTBOUND_EMAIL_ADAPTER' => attributes['outbound_email']['provider'],
+        'OUTBOUND_EMAIL_ADAPTER_OPTS' => attributes['outbound_email']['configs'].to_json,
         'OUTBOUND_EMAIL_FROM' => attributes['outbound_email']['from'],
 
         # XXX: Remove this in the future when we're fairly sure that users won't upgrade across
         # the <= 0.4.4 to >= 0.4.5 version boundary.
         'WIREGUARD_PRIVATE_KEY_PATH' => "#{node['firezone']['var_directory']}/cache/wg_private_key",
 
+        'SAML_KEYFILE_PATH' => "#{node['firezone']['ssl']['directory']}/saml.key",
+        'SAML_CERTFILE_PATH' => "#{node['firezone']['ssl']['directory']}/saml.crt",
+
         # Auth
         'LOCAL_AUTH_ENABLED' => attributes['authentication']['local']['enabled'].to_s,
-        'OKTA_AUTH_ENABLED' => attributes['authentication']['okta']['enabled'].to_s,
-        'OKTA_CLIENT_ID' => attributes['authentication']['okta']['client_id'],
-        'OKTA_CLIENT_SECRET' => attributes['authentication']['okta']['client_secret'],
-        'OKTA_SITE' => attributes['authentication']['okta']['site'],
-        'GOOGLE_AUTH_ENABLED' => attributes['authentication']['google']['enabled'].to_s,
-        'GOOGLE_CLIENT_ID' => attributes['authentication']['google']['client_id'],
-        'GOOGLE_CLIENT_SECRET' => attributes['authentication']['google']['client_secret'],
-        'GOOGLE_REDIRECT_URI' => attributes['authentication']['google']['redirect_uri'],
 
         'DISABLE_VPN_ON_OIDC_ERROR' => attributes['authentication']['disable_vpn_on_oidc_error'].to_s,
-        'AUTO_CREATE_OIDC_USERS' => attributes['authentication']['auto_create_oidc_users'].to_s,
 
         # OpenID Connect auth settings are serialized to json for consumption by fz_http
-        'AUTH_OIDC' => attributes['authentication']['oidc'].to_json,
+        'OPENID_CONNECT_PROVIDERS' => attributes['authentication']['oidc'].to_json,
+        # SAML auth settings are serialized to json for consumption by fz_http
+        'SAML_IDENTITY_PROVIDERS' => attributes['authentication']['saml'].to_json,
 
         # secrets
         'GUARDIAN_SECRET_KEY' => attributes['guardian_secret_key'],
@@ -283,7 +284,10 @@ class Firezone
         'LIVE_VIEW_SIGNING_SALT' => attributes['live_view_signing_salt'],
         'COOKIE_SIGNING_SALT' => attributes['cookie_signing_salt'],
         'COOKIE_ENCRYPTION_SALT' => attributes['cookie_encryption_salt'],
-        'DATABASE_ENCRYPTION_KEY' => attributes['database_encryption_key']
+        'DATABASE_ENCRYPTION_KEY' => attributes['database_encryption_key'],
+
+        # cookies
+        'SECURE_COOKIES' => attributes['phoenix']['secure_cookies'].to_s
       }
 
       env.merge!('DATABASE_PASSWORD' => attributes['database']['password']) if attributes.dig('database', 'password')

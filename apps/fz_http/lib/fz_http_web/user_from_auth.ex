@@ -2,45 +2,50 @@ defmodule FzHttpWeb.UserFromAuth do
   @moduledoc """
   Authenticates users.
   """
+  alias FzHttp.{Auth, Users}
+  alias FzHttpWeb.Auth.HTML.Authentication
 
-  alias FzHttp.Users
-  alias FzHttpWeb.Authentication
-  alias Ueberauth.Auth
-
+  # Local auth
   def find_or_create(
-        %Auth{
+        %Ueberauth.Auth{
           provider: :identity,
-          info: %Auth.Info{email: email},
-          credentials: %Auth.Credentials{other: %{password: password}}
+          info: %Ueberauth.Auth.Info{email: email},
+          credentials: %Ueberauth.Auth.Credentials{other: %{password: password}}
         } = _auth
       ) do
-    Users.get_by_email(email) |> Authentication.authenticate(password)
-  end
-
-  def find_or_create(%Auth{provider: provider, info: %Auth.Info{email: email}} = _auth)
-      when provider in [:google, :okta] do
-    case Users.get_by_email(email) do
-      nil -> maybe_create_user(email)
-      user -> {:ok, user}
+    with {:ok, user} <- Users.fetch_user_by_email(email) do
+      Authentication.authenticate(user, password)
     end
   end
 
-  def find_or_create(_provider, %{"email" => email, "sub" => _sub}) do
-    case Users.get_by_email(email) do
-      nil -> maybe_create_user(email)
-      user -> {:ok, user}
-    end
-  end
-
-  defp maybe_create_user(email) do
-    if auto_create_oidc_users?() do
-      Users.create_unprivileged_user(%{email: email})
+  # SAML
+  def find_or_create(:saml, provider_id, %{"email" => email}) do
+    with {:ok, user} <- Users.fetch_user_by_email(email) do
+      {:ok, user}
     else
-      {:error, "not found"}
+      {:error, :not_found} -> maybe_create_user(:saml_identity_providers, provider_id, email)
     end
   end
 
-  defp auto_create_oidc_users? do
-    Application.fetch_env!(:fz_http, :auto_create_oidc_users)
+  # OIDC
+  def find_or_create(provider_id, %{"email" => email, "sub" => _sub}) do
+    with {:ok, user} <- Users.fetch_user_by_email(email) do
+      {:ok, user}
+    else
+      {:error, :not_found} -> maybe_create_user(:openid_connect_providers, provider_id, email)
+    end
+  end
+
+  # Fallback
+  def find_or_create(_provider_id, _params) do
+    {:error, "unknown provider or email not found in params"}
+  end
+
+  defp maybe_create_user(idp_field, provider_id, email) do
+    if Auth.auto_create_users?(idp_field, provider_id) do
+      Users.create_user(:unprivileged, %{email: email})
+    else
+      {:error, "user not found and auto_create_users disabled"}
+    end
   end
 end

@@ -6,18 +6,18 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
 
   describe "when unauthenticated" do
     test "mount redirects to session path", %{unauthed_conn: conn} do
-      path = Routes.setting_account_path(conn, :show)
-      expected_path = Routes.root_path(conn, :index)
+      path = ~p"/settings/account"
+      expected_path = ~p"/"
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
 
   describe "when live_action is show" do
     test "shows account details", %{admin_user: user, admin_conn: conn} do
-      path = Routes.setting_account_path(conn, :show)
+      path = ~p"/settings/account"
       {:ok, _view, html} = live(conn, path)
 
-      user = Users.get_user!(user.id)
+      user = Users.fetch_user_by_id!(user.id)
 
       assert html =~ "Delete Your Account"
       assert html =~ user.email
@@ -34,19 +34,19 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
     end
 
     test "saves email when submitted", %{admin_conn: conn} do
-      path = Routes.setting_account_path(conn, :edit)
+      path = ~p"/settings/account/edit"
       {:ok, view, _html} = live(conn, path)
 
       view
       |> element("#account-edit")
       |> render_submit(@valid_params)
 
-      flash = assert_redirected(view, Routes.setting_account_path(conn, :show))
+      flash = assert_redirect(view, ~p"/settings/account")
       assert flash["info"] == "Account updated successfully."
     end
 
     test "doesn't allow empty email", %{admin_conn: conn} do
-      path = Routes.setting_account_path(conn, :edit)
+      path = ~p"/settings/account/edit"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -55,18 +55,17 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
         |> render_submit(%{
           "user" => %{
             "email" => "",
-            "current_password" => "",
             "password" => "",
             "password_confirmation" => ""
           }
         })
 
-      refute_redirected(view, Routes.setting_account_path(conn, :show))
+      refute_redirected(view, ~p"/settings/account")
       assert test_view =~ "can&#39;t be blank"
     end
 
     test "renders validation errors", %{admin_conn: conn} do
-      path = Routes.setting_account_path(conn, :edit)
+      path = ~p"/settings/account/edit"
       {:ok, view, _html} = live(conn, path)
 
       test_view =
@@ -74,21 +73,18 @@ defmodule FzHttpWeb.SettingLive.AccountTest do
         |> element("#account-edit")
         |> render_submit(@invalid_params)
 
-      assert test_view =~ "has invalid format"
+      assert test_view =~ "is invalid email address"
     end
 
     test "closes modal", %{admin_conn: conn} do
-      path = Routes.setting_account_path(conn, :edit)
+      path = ~p"/settings/account/edit"
       {:ok, view, _html} = live(conn, path)
 
       view
-      |> element("button.delete")
+      |> element("button[aria-label=close]")
       |> render_click()
 
-      # Sometimes assert_patched fails without this :-(
-      Process.sleep(1000)
-
-      assert_patched(view, Routes.setting_account_path(conn, :show))
+      assert_patch(view, ~p"/settings/account")
     end
   end
 end

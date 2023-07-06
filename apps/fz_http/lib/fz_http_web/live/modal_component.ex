@@ -14,7 +14,8 @@ defmodule FzHttpWeb.ModalComponent do
       phx-window-keydown="close"
       phx-key="escape"
       phx-target={@myself}
-      phx-page-loading>
+      phx-page-loading
+    >
       <div class="modal-background"></div>
       <div class="modal-card">
         <header class="modal-card-head">
@@ -31,10 +32,12 @@ defmodule FzHttpWeb.ModalComponent do
           </div>
         </section>
         <footer class="modal-card-foot is-justify-content-flex-end">
-        <%= if !assigns[:hide_footer_content] do %>
-          <%= Phoenix.View.render(FzHttpWeb.SharedView, "submit_button.html",
-              button_text: @opts[:button_text], form: @opts[:form]) %>
-        <% end %>
+          <%= if !(assigns[:hide_footer_content] || @opts[:hide_footer_content]) do %>
+            <%= Phoenix.View.render(FzHttpWeb.SharedView, "submit_button.html",
+              button_text: @opts[:button_text],
+              form: @opts[:form]
+            ) %>
+          <% end %>
         </footer>
       </div>
     </div>
@@ -44,15 +47,5 @@ defmodule FzHttpWeb.ModalComponent do
   @impl Phoenix.LiveComponent
   def handle_event("close", _, socket) do
     {:noreply, push_patch(socket, to: socket.assigns.return_to)}
-  end
-
-  @impl Phoenix.LiveComponent
-  @doc """
-  XXX: This is needed due to a bug on pages with dropdowns.
-  Basically this modal receives the phx-click-away event and the
-  server crashes if this is not implemented.
-  """
-  def handle_event("close_dropdown", _params, socket) do
-    {:noreply, socket}
   end
 end

@@ -1,118 +1,156 @@
-# This file is responsible for configuring your umbrella
-# and **all applications** and their dependencies with the
-# help of the Config module.
+# Couple rules:
 #
-# *Note*:
-# This configuration is generated on compile time. To configure the application during runtime,
-# use releases.exs. These configuration options are overridden by environment-specific
-# configuration files.
+# 1. This file should contain all supported application environment variables,
+# even if they are overridden in `runtime.exs`, because it's the main source of
+# truth and self-documentation.
 #
-# Note that all applications in your umbrella share the
-# same configuration and dependencies, which is why they
-# all use the same configuration file. If you want different
-# configurations or dependencies per app, it is best to
-# move said applications out of the umbrella.
+# 2. The configurations here should be as close to `dev` environment as possible,
+# to prevent having too many overrides in other files.
 import Config
 
-require Logger
+config :fz_http, supervision_tree_mode: :full
 
-# Sample configuration:
-#
-#     config :logger, :console,
-#       level: :info,
-#       format: "$date $time [$level] $metadata$message\n",
-#       metadata: [:user_id]
+config :fz_http, ecto_repos: [FzHttp.Repo]
+config :fz_http, sql_sandbox: false
+
+config :fz_http, FzHttp.Repo,
+  hostname: "localhost",
+  username: "postgres",
+  password: "postgres",
+  database: "firezone_dev",
+  show_sensitive_data_on_connection_error: true,
+  pool_size: :erlang.system_info(:logical_processors_available) * 2,
+  queue_target: 500,
+  queue_interval: 1000,
+  migration_timestamps: [type: :timestamptz]
+
+config :fz_http,
+  external_url: "http://localhost:13000/",
+  # TODO: use endpoint path instead?
+  path_prefix: "/"
+
+config :fz_http, FzHttpWeb.Endpoint,
+  url: [
+    scheme: "http",
+    host: "localhost",
+    port: 13000,
+    path: nil
+  ],
+  render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
+  pubsub_server: FzHttp.PubSub,
+  secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD",
+  live_view: [
+    signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
+  ]
+
+config :fz_http,
+  wireguard_ipv4_enabled: true,
+  wireguard_ipv4_network: %{__struct__: Postgrex.INET, address: {100, 64, 0, 0}, netmask: 10},
+  wireguard_ipv4_address: %{__struct__: Postgrex.INET, address: {100, 64, 0, 1}, netmask: nil},
+  wireguard_ipv6_enabled: true,
+  wireguard_ipv6_network: %{
+    __struct__: Postgrex.INET,
+    address: {64768, 0, 0, 0, 0, 0, 0, 0},
+    netmask: 106
+  },
+  wireguard_ipv6_address: %{
+    __struct__: Postgrex.INET,
+    address: {64768, 0, 0, 0, 0, 0, 0, 1},
+    netmask: nil
+  }
+
+config :fz_http, FzHttp.SAML,
+  entity_id: "urn:firezone.dev:firezone-app",
+  certfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned.pem", __DIR__),
+  keyfile_path: Path.expand("../apps/fz_http/priv/cert/saml_selfsigned_key.pem", __DIR__)
+
+config :fz_http,
+  external_trusted_proxies: [],
+  private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
+
+config :fz_http, FzHttp.Telemetry,
+  enabled: true,
+  id: "firezone-dev"
+
+config :fz_http,
+  cookie_secure: false,
+  cookie_signing_salt: "WjllcThpb2Y=",
+  cookie_encryption_salt: "M0EzM0R6NEMyaw=="
+
+config :fz_http, FzHttp.ConnectivityChecks,
+  http_client_options: [],
+  enabled: true,
+  interval: 43_200,
+  url: "https://ping-dev.firez.one/"
+
+config :fz_http,
+  admin_email: "firezone@localhost",
+  default_admin_password: "firezone1234"
+
+config :fz_http,
+  max_devices_per_user: 10
+
+###############################
+##### FZ Firewall configs #####
+###############################
+
+config :fz_wall, cli: FzWall.CLI.Sandbox
+
+config :fz_wall,
+  wireguard_ipv4_masquerade: true,
+  wireguard_ipv6_masquerade: true,
+  wireguard_interface_name: "wg-firezone",
+  nft_path: "nft",
+  egress_interface: "dummy"
+
+config :fz_wall,
+  port_based_rules_supported: true
+
+###############################
+##### FZ VPN configs ##########
+###############################
+
+# This will be changed per-env
+config :fz_vpn,
+  wireguard_private_key_path: "priv/wg_dev_private_key",
+  stats_push_service_enabled: true,
+  wireguard_interface_name: "wg-firezone",
+  wireguard_port: 51_820,
+  wg_adapter: FzVpn.Interface.WGAdapter.Live,
+  supervised_children: [FzVpn.Server, FzVpn.StatsPushService]
+
+###############################
+##### Third-party configs #####
+###############################
+
+config :logger, :console,
+  level: String.to_atom(System.get_env("LOG_LEVEL", "info")),
+  format: "$time $metadata[$level] $message\n",
+  metadata: :all
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-git_sha =
-  case System.get_env("GIT_SHA") do
-    nil ->
-      {output, 0} = System.cmd("git", ["rev-parse", "--short", "HEAD"], stderr_to_stdout: true)
-      String.trim(output)
-
-    str ->
-      str
-  end
-
 # Public API key for telemetry
 config :posthog,
-  api_url: "https://telemetry.firez.one",
+  api_url: "https://t.firez.one",
   api_key: "phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK"
 
+config :ueberauth, Ueberauth,
+  providers: [
+    identity: {Ueberauth.Strategy.Identity, callback_methods: ["POST"], uid_field: :email}
+  ]
+
 # Guardian configuration
-config :fz_http, FzHttpWeb.Authentication,
+config :fz_http, FzHttpWeb.Auth.HTML.Authentication,
   issuer: "fz_http",
   # Generate with mix guardian.gen.secret
   secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
 
-config :fz_http,
-  disable_vpn_on_oidc_error: true,
-  auto_create_oidc_users: true,
-  sandbox: true,
-  allow_unprivileged_device_management: true,
-  telemetry_id: "543aae08-5a2b-428d-b704-2956dd3f5a57",
-  wireguard_endpoint: nil,
-  wireguard_dns: "1.1.1.1, 1.0.0.1",
-  wireguard_allowed_ips: "0.0.0.0/0, ::/0",
-  wireguard_persistent_keepalive: 0,
-  wireguard_ipv4_enabled: true,
-  wireguard_ipv4_network: "10.3.2.0/24",
-  wireguard_ipv4_address: "10.3.2.1",
-  wireguard_ipv6_enabled: true,
-  wireguard_ipv6_network: "fd00::3:2:0/120",
-  wireguard_ipv6_address: "fd00::3:2:1",
-  wireguard_mtu: "1280",
-  max_devices_per_user: 10,
-  telemetry_module: FzCommon.Telemetry,
-  supervision_tree_mode: :full,
-  http_client: HTTPoison,
-  connectivity_checks_enabled: true,
-  connectivity_checks_interval: 3_600,
-  connectivity_checks_url: "https://ping-dev.firez.one/",
-  git_sha: git_sha,
-  cookie_secure: true,
-  cookie_signing_salt: "Z9eq8iof",
-  cookie_encryption_salt: "3A33Dz4C2k",
-  ecto_repos: [FzHttp.Repo],
-  admin_email: "firezone@localhost",
-  default_admin_password: "firezone1234",
-  events_module: FzHttp.Events,
-  server_process_opts: [name: {:global, :fz_http_server}],
-  openid_connect_providers: [],
-  openid_connect: OpenIDConnect
-
-config :fz_wall,
-  cli: FzWall.CLI.Sandbox,
-  wireguard_ipv4_masquerade: true,
-  wireguard_ipv6_masquerade: true,
-  server_process_opts: [name: {:global, :fz_wall_server}],
-  egress_interface: "dummy",
-  wireguard_interface_name: "wg-firezone"
-
-config :hammer,
-  backend: {Hammer.Backend.ETS, [expiry_ms: 60_000 * 60 * 4, cleanup_interval_ms: 60_000 * 10]}
-
-# This will be changed per-env
-config :fz_vpn,
-  stats_push_service_enabled: true,
-  wireguard_private_key_path: "priv/.wg_dummy_private_key",
-  wireguard_interface_name: "wg-firezone",
-  wireguard_port: 51820,
-  wireguard_endpoint: "127.0.0.1",
-  wg_adapter: FzVpn.Interface.WGAdapter.Sandbox,
-  server_process_opts: [name: {:global, :fz_vpn_server}]
-
-config :fz_http, FzHttpWeb.Endpoint,
-  render_errors: [view: FzHttpWeb.ErrorView, accepts: ~w(html json)],
-  pubsub_server: FzHttp.PubSub,
-  proxy_forwarded: false
-
-# Configures Elixir's Logger
-config :logger, :console,
-  format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+config :fz_http, FzHttpWeb.Auth.JSON.Authentication,
+  issuer: "fz_http",
+  # Generate with mix guardian.gen.secret
+  secret_key: "GApJ4c4a/KJLrBePgTDUk0n67AbjCvI9qdypKZEaJFXl6s9H3uRcIhTt49Fij5UO"
 
 # Configures the vault
 config :fz_http, FzHttp.Vault,
@@ -131,7 +169,16 @@ config :fz_http, FzHttp.Vault,
     }
   ]
 
-config :fz_http, FzHttp.Mailer, adapter: FzHttp.Mailer.NoopAdapter
+config :fz_http, FzHttpWeb.Mailer,
+  adapter: FzHttpWeb.Mailer.NoopAdapter,
+  from_email: "test@firez.one"
+
+config :samly, Samly.State, store: Samly.State.Session
+
+config :samly, Samly.Provider,
+  idp_id_from: :path_segment,
+  service_providers: [],
+  identity_providers: []
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

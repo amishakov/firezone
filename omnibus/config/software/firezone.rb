@@ -20,7 +20,6 @@ description 'the steps required to compile the firezone elixir application'
 default_version '1.0.0'
 
 dependency 'postgresql'
-dependency 'nodejs'
 dependency 'elixir'
 dependency 'nftables' if linux?
 dependency 'ruby'
@@ -31,12 +30,18 @@ version('1.0.0') do
            '.env',
            '.git',
            '.ci',
+           'docs',
+           'doc',
+           'priv',
+           'scripts',
+           'tmp',
            '.vagrant',
            '.github',
            '_build',
            'deps',
            'omnibus',
-           'apps/fz_http/assets/node_modules'
+           'apps/fz_http/assets/node_modules',
+           'apps/fz_http/priv/cert'
          ] }
 end
 
@@ -44,7 +49,9 @@ license :project_license
 skip_transitive_dependency_licensing true
 
 build do
-  env = with_standard_compiler_flags(with_embedded_path).merge(
+  env = with_standard_compiler_flags(
+    'PATH' => "/opt/runner/local/bin:#{with_embedded_path['PATH']}"
+  ).merge(
     'MIX_ENV' => 'prod',
     'VERSION' => ENV.fetch('VERSION', '0.0.0+git.0.ci')
   )
@@ -53,9 +60,10 @@ build do
   command 'mix local.rebar --force', env: env
   command 'mix deps.get --only prod', env: env
   command 'mix deps.compile --only prod', env: env
-  command 'npm ci --prefix apps/fz_http/assets --progress=false --no-audit --loglevel=error', env: env
-  command 'npm run --prefix apps/fz_http/assets deploy', env: env
+  command 'cd apps/fz_http/assets && yarn install --frozen-lockfile', env: env
+  command 'cd apps/fz_http/assets && yarn deploy', env: env
   command 'cd apps/fz_http && mix phx.digest', env: env
   command 'mix release', env: env
+
   sync '_build/prod/rel/firezone', "#{install_dir}/embedded/service/firezone"
 end

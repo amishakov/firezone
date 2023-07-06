@@ -1,58 +1,66 @@
 <%= if @live_action == :new do %>
   <%= live_modal(
-      FzHttpWeb.DeviceLive.NewFormComponent,
-      return_to: Routes.device_unprivileged_index_path(@socket, :index),
-      title: "Add Device",
-      current_user: @current_user,
-      target_user_id: @current_user.id,
-      id: "create-device-component",
-      form: "create-device",
-      button_text: "Generate Configuration") %>
+    FzHttpWeb.DeviceLive.NewFormComponent,
+    return_to: ~p"/user_devices",
+    title: "Add Device",
+    current_user: @current_user,
+    user: @current_user,
+    id: "create-device-component",
+    form: "create-device",
+    button_text: "Generate Configuration",
+    subject: @subject
+  ) %>
 <% end %>
 
 <section class="section is-main-section">
-  <%= render FzHttpWeb.SharedView, "flash.html", assigns %>
+  <%= render(FzHttpWeb.SharedView, "flash.html", assigns) %>
   <h4 class="title is-4"><%= @page_title %></h4>
 
   <div class="block">
-    Each device corresponds to a WireGuard configuration for connecting to this
-    Firezone server.
+    <%= @page_subtitle %>
   </div>
 
   <div class="block">
     You'll need a WireGuard client installed in order to connect to this Firezone
     instance. See
-    <a target="_blank" href="https://docs.firezone.dev/docs/user-guides/client-instructions/">
+    <a target="_blank" href="https://docs.firezone.dev/user-guides/client-instructions/">
       the Firezone documentation
     </a>
     for a step-by-step guide.
   </div>
 
   <div class="block">
-    <%= if length(@devices) > 0 do %>
+    <%= unless Enum.empty?(@devices) do %>
       <table class="table is-bordered is-hoverable is-striped is-fullwidth">
         <thead>
           <tr>
             <th>Name</th>
-            <th>Assigned Device IP</th>
+            <th>Tunnel IPv4</th>
+            <th>Tunnel IPv6</th>
             <th>Public key</th>
             <th>Created</th>
           </tr>
         </thead>
         <tbody>
-        <%= for device <- @devices do %>
-          <tr>
-            <td>
-              <%= live_patch(device.name, to: Routes.device_unprivileged_show_path(@socket, :show, device)) %>
-            </td>
-            <td class="code">
-              <span><%= device.ipv4 %></span>
-              <span><%= device.ipv6 %></span>
-            </td>
-            <td class="code"><%= device.public_key %></td>
-            <td id={"device-#{device.id}-inserted-at"} data-timestamp={device.inserted_at} phx-hook="FormatTimestamp">…</td>
-          </tr>
-        <% end %>
+          <%= for device <- @devices do %>
+            <tr>
+              <td>
+                <.link navigate={~p"/user_devices/#{device}"}>
+                  <%= device.name %>
+                </.link>
+              </td>
+              <td class="code"><%= device.ipv4 %></td>
+              <td class="code"><%= device.ipv6 %></td>
+              <td class="code"><%= device.public_key %></td>
+              <td
+                id={"device-#{device.id}-inserted-at"}
+                data-timestamp={device.inserted_at}
+                phx-hook="FormatTimestamp"
+              >
+                …
+              </td>
+            </tr>
+          <% end %>
         </tbody>
       </table>
     <% else %>
@@ -62,11 +70,11 @@
     <% end %>
   </div>
 
-  <%= if FzHttpWeb.DeviceView.can_manage_devices?(@current_user) do %>
+  <%= if FzHttp.Devices.authorize_user_device_management(@current_user.id, @subject) == :ok do %>
     <div class="block">
-      <%= live_patch(to: Routes.device_unprivileged_index_path(@socket, :new), class: "button") do %>
+      <.link replace={true} patch={~p"/user_devices/new"} class="button">
         Add Device
-      <% end %>
+      </.link>
     </div>
   <% end %>
 
@@ -87,11 +95,16 @@
           <% end %>
           <p>
             <strong>
-              <span id="vpn-expires" phx-hook="FormatTimestamp" data-timestamp={vpn_expires_at(@current_user)}>...</span>
+              <span
+                id="vpn-expires"
+                phx-hook="FormatTimestamp"
+                data-timestamp={vpn_expires_at(@current_user)}
+              >
+                ...
+              </span>
             </strong>
           </p>
-          <%= link("Reauthenticate", to: Routes.auth_path(@socket, :delete), method: :delete) %>
-          to renew your VPN session.
+          <%= link("Reauthenticate", to: ~p"/sign_out", method: :delete) %> to renew your VPN session.
         <% else %>
           Your VPN session is active indefinitely.
         <% end %>
@@ -104,11 +117,11 @@
           Signed in as <%= @current_user.email %>.
         </p>
         <p>
-          <%= live_patch(to: Routes.setting_unprivileged_account_path(@socket, :show)) do %>
+          <.link navigate={~p"/user_account"}>
             My Account
-          <% end %>
+          </.link>
           /
-          <%= link(to: Routes.auth_path(@socket, :delete), method: :delete) do %>
+          <%= link(to: ~p"/sign_out", method: :delete) do %>
             Sign out
           <% end %>
         </p>

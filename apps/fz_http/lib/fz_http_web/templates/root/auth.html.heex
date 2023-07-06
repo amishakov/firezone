@@ -1,45 +1,39 @@
 <h3 class="is-3 title">Sign In</h3>
 
-<hr>
+<hr />
 
 <div class="content">
   <p>
     Please sign in via one of the methods below.
   </p>
 
-  <%= for {provider, config} <- @openid_connect_providers do %>
+  <%= for provider <- @openid_connect_providers do %>
     <p>
       <%= link(
-          "Sign in with #{config[:label]}",
-          to: authorization_uri(@openid_connect, provider),
-          class: "button") %>
+        "Sign in with #{provider.label}",
+        to: ~p"/auth/oidc/#{provider.id}",
+        class: "button"
+      ) %>
+    </p>
+  <% end %>
+
+  <%= for provider <- @saml_identity_providers do %>
+    <p>
+      <%= link(
+        "Sign in with #{provider.label}",
+        to: "/auth/saml/auth/signin/#{provider.id}/",
+        class: "button"
+      ) %>
     </p>
   <% end %>
 
   <%= if @local_enabled do %>
     <p>
       <%= link(
-          "Sign in with email",
-          to: Routes.auth_path(@conn, :request, "identity"),
-          class: "button") %>
-    </p>
-  <% end %>
-
-  <%= if @okta_enabled do %>
-    <p>
-      <%= link(
-          "Sign in with Okta",
-          to: Routes.auth_path(@conn, :request, "okta"),
-          class: "button") %>
-    </p>
-  <% end %>
-
-  <%= if @google_enabled do %>
-    <p>
-      <%= link(
-          "Sign in with Google",
-          to: Routes.auth_path(@conn, :request, "google"),
-          class: "button") %>
+        "Sign in with email",
+        to: ~p"/auth/identity",
+        class: "button"
+      ) %>
     </p>
   <% end %>
 </div>

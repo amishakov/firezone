@@ -1,78 +1,124 @@
 defmodule FzHttp.Rules do
-  @moduledoc """
-  The Rules context.
-  """
+  alias FzHttp.{Repo, Auth, Validator, Telemetry}
+  alias FzHttp.Rules.{Authorizer, Rule}
 
-  import Ecto.Query, warn: false
-  alias EctoNetwork.INET
+  def fetch_count_by_user_id(user_id, %Auth.Subject{} = subject) do
+    if Validator.valid_uuid?(user_id) do
+      queryable =
+        Rule.Query.by_user_id(user_id)
+        |> Authorizer.for_subject(subject)
 
-  alias FzHttp.{Repo, Rules.Rule, Telemetry}
+      {:ok, Repo.aggregate(queryable, :count)}
+    else
+      {:ok, 0}
+    end
+  end
 
-  def get_rule!(id), do: Repo.get!(Rule, id)
+  def fetch_rule_by_id(id, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()),
+         true <- Validator.valid_uuid?(id) do
+      Rule.Query.by_id(id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch()
+    else
+      false -> {:error, :not_found}
+      other -> other
+    end
+  end
+
+  def fetch_rule_by_id!(id) do
+    Rule.Query.by_id(id)
+    |> Repo.one!()
+  end
+
+  def list_rules(%Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()) do
+      Rule.Query.all()
+      |> Authorizer.for_subject(subject)
+      |> Repo.list()
+    end
+  end
+
+  def list_rules_by_user_id(user_id, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()),
+         true <- Validator.valid_uuid?(user_id) do
+      Rule.Query.by_user_id(user_id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.list()
+    else
+      false -> {:ok, []}
+      other -> other
+    end
+  end
 
   def new_rule(attrs \\ %{}) do
-    %Rule{}
-    |> Rule.changeset(attrs)
+    Rule.Changeset.create_changeset(attrs)
   end
 
-  def create_rule(attrs \\ %{}) do
-    result =
-      attrs
-      |> new_rule()
-      |> Repo.insert()
+  def change_rule(%Rule{} = rule, attrs \\ %{}) do
+    Rule.Changeset.update_changeset(rule, attrs)
+  end
 
-    case result do
-      {:ok, _rule} ->
-        Telemetry.add_rule()
-
-      _ ->
-        nil
+  def create_rule(attrs, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()) do
+      create_rule(attrs)
     end
-
-    result
   end
 
-  def delete_rule(%Rule{} = rule) do
-    Telemetry.delete_rule()
-    Repo.delete(rule)
+  def create_rule(attrs) do
+    changeset = Rule.Changeset.create_changeset(attrs)
+
+    with {:ok, rule} <- Repo.insert(changeset) do
+      Telemetry.add_rule()
+      {:ok, rule}
+    end
   end
+
+  def update_rule(%Rule{} = rule, attrs, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()) do
+      rule
+      |> Rule.Changeset.update_changeset(attrs)
+      |> Repo.update()
+    end
+  end
+
+  def delete_rule(%Rule{} = rule, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_rules_permission()) do
+      Telemetry.delete_rule()
+      Repo.delete(rule)
+    end
+  end
+
+  def setting_projection(rule_or_map) do
+    %{
+      destination: to_string(rule_or_map.destination),
+      action: rule_or_map.action,
+      user_id: rule_or_map.user_id,
+      port_type: rule_or_map.port_type,
+      port_range: rule_or_map.port_range
+    }
+  end
+
+  def port_rules_supported?, do: FzHttp.Config.fetch_env!(:fz_wall, :port_based_rules_supported)
+
+  def as_settings do
+    port_rules_supported?()
+    |> scope()
+    |> Repo.all()
+    |> Enum.map(&setting_projection/1)
+    |> MapSet.new()
+  end
+
+  defp scope(true), do: Rule.Query.all()
+  defp scope(false), do: Rule.Query.by_empty_port_type()
 
   def allowlist do
-    Repo.all(
-      from r in Rule,
-        where: r.action == :accept
-    )
+    Rule.Query.by_action(:accept)
+    |> Repo.all()
   end
 
   def denylist do
-    Repo.all(
-      from r in Rule,
-        where: r.action == :drop
-    )
+    Rule.Query.by_action(:drop)
+    |> Repo.all()
   end
-
-  def nftables_spec(rule) do
-    {decode(rule.destination), rule.action}
-  end
-
-  def to_nftables do
-    Enum.map(nftables_query(), fn {dest, act} ->
-      {decode(dest), act}
-    end)
-  end
-
-  defp nftables_query do
-    query =
-      from r in Rule,
-        order_by: r.action,
-        select: {
-          r.destination,
-          r.action
-        }
-
-    Repo.all(query)
-  end
-
-  defp decode(nil), do: nil
-  defp decode(inet), do: INET.decode(inet)
 end

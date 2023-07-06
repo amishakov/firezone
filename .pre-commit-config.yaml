@@ -2,11 +2,16 @@ repos:
   - repo: local
     hooks:
       # Elixir config
+      - id: mix-compile
+        name: 'elixir: mix compile'
+        entry: mix compile --force --warnings-as-errors
+        language: system
+        pass_filenames: false
+        files: \.ex$
       - id: mix-format
         name: 'elixir: mix format'
         entry: mix format --check-formatted
         language: system
-        files: \.exs*$
       - id: mix-lint
         name: 'elixir: mix credo'
         entry: mix credo --strict
@@ -19,12 +24,11 @@ repos:
         language: system
         pass_filenames: false
         files: \.exs*$
-      - id: mix-compile
-        name: 'elixir: mix compile'
-        entry: mix compile --force --warnings-as-errors
+      - id: codespell
+        name: 'python: codespell'
+        entry: codespell
         language: system
         pass_filenames: false
-        files: \.ex$
       - id: rubocop
         name: 'ruby: rubocop'
         entry: bundle exec rubocop
@@ -47,4 +51,8 @@ repos:
         exclude: "^omnibus/config/patches/"
       - id: check-merge-conflict
       - id: no-commit-to-branch
-        args: [-b, master, -b, develop]
+        args:
+          - -b
+          - master
+          - --pattern
+          - '^(?!((website|chore|feat|feature|bug|fix|build|ci|docs|style|refactor|perf|test|revert)\/[@a-zA-Z0-9\-\.\/]+)$).*'

@@ -5,8 +5,7 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
   use FzHttpWeb, :live_component
 
   alias FzHttp.Rules
-
-  @events_module Application.compile_env!(:fz_http, :events_module)
+  alias FzHttp.Users
 
   @impl Phoenix.LiveComponent
   def update(assigns, socket) do
@@ -16,18 +15,32 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
      |> assign(
        action: action(assigns.id),
        rule_list: rule_list(assigns),
-       changeset: Rules.new_rule()
+       users: users(assigns.subject),
+       changeset: Rules.new_rule(),
+       port_rules_supported: Rules.port_rules_supported?()
      )}
   end
 
-  @impl true
-  def handle_event("add_rule", %{"rule" => rule_params}, socket) do
-    case Rules.create_rule(rule_params) do
-      {:ok, rule} ->
-        @events_module.add_rule(rule)
+  @impl Phoenix.LiveComponent
+  def handle_event("change", %{"rule" => attrs}, socket) do
+    changeset = Rules.new_rule(attrs)
 
-        {:noreply,
-         assign(socket, changeset: Rules.new_rule(), rule_list: rule_list(socket.assigns))}
+    socket =
+      socket
+      |> assign(:changeset, changeset)
+
+    {:noreply, socket}
+  end
+
+  @impl Phoenix.LiveComponent
+  def handle_event("add_rule", %{"rule" => attrs}, socket) do
+    case Rules.create_rule(attrs, socket.assigns.subject) do
+      {:ok, _rule} ->
+        socket =
+          socket
+          |> assign(changeset: Rules.new_rule(), rule_list: rule_list(socket.assigns))
+
+        {:noreply, socket}
 
       {:error, changeset} ->
         {:noreply, assign(socket, changeset: changeset)}
@@ -36,13 +49,10 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
 
   @impl Phoenix.LiveComponent
   def handle_event("delete_rule", %{"rule_id" => rule_id}, socket) do
-    rule = Rules.get_rule!(rule_id)
-
-    case Rules.delete_rule(rule) do
-      {:ok, _rule} ->
-        @events_module.delete_rule(rule)
-        {:noreply, assign(socket, rule_list: rule_list(socket.assigns))}
-
+    with {:ok, rule} <- Rules.fetch_rule_by_id(rule_id, socket.assigns.subject),
+         {:ok, _rule} <- Rules.delete_rule(rule, socket.assigns.subject) do
+      {:noreply, assign(socket, rule_list: rule_list(socket.assigns))}
+    else
       {:error, msg} ->
         {:noreply, put_flash(socket, :error, "Couldn't delete rule. #{msg}")}
     end
@@ -67,4 +77,24 @@ defmodule FzHttpWeb.RuleLive.RuleListComponent do
         Rules.denylist()
     end
   end
+
+  defp users(subject) do
+    {:ok, users} = Users.list_users(subject)
+
+    users
+    |> Stream.map(&{&1.id, &1.email})
+    |> Map.new()
+  end
+
+  defp user_options(users) do
+    Enum.map(users, fn {id, email} -> {email, id} end)
+  end
+
+  defp port_type_options do
+    %{TCP: :tcp, UDP: :udp}
+  end
+
+  defp port_type_display(nil), do: nil
+  defp port_type_display(:tcp), do: "TCP"
+  defp port_type_display(:udp), do: "UDP"
 end

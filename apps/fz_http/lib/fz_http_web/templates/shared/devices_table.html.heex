@@ -2,8 +2,11 @@
   <thead>
     <tr>
       <th>Name</th>
-      <%= if @show_user do %><th>User</th><% end %>
-      <th>WireGuard IP</th>
+      <%= if @show_user do %>
+        <th>User</th>
+      <% end %>
+      <th>Tunnel IPv4</th>
+      <th>Tunnel IPv6</th>
       <th>Remote IP</th>
       <th>Latest Handshake</th>
       <th>Transfer</th>
@@ -13,34 +16,52 @@
     </tr>
   </thead>
   <tbody>
-  <%= for device <- @devices do %>
-    <tr>
-      <td>
-        <%= live_patch(device.name, to: Routes.device_admin_show_path(@socket, :show, device)) %>
-      </td>
-      <%= if @show_user do %>
+    <%= for device <- @devices do %>
+      <tr>
         <td>
-          <%= live_redirect(device.user.email, to: Routes.user_show_path(@socket, :show, device.user)) %>
+          <.link navigate={~p"/devices/#{device}"}>
+            <%= device.name %>
+          </.link>
         </td>
-      <% end %>
-      <td class="code">
-        <%= device.ipv4 %>
-        <br>
-        <%= device.ipv6 %>
-      </td>
-      <td class="code">
-        <%= device.remote_ip %>
-      </td>
-      <td id={"device-#{device.id}-latest-handshake"} data-timestamp={device.latest_handshake} phx-hook="FormatTimestamp">…</td>
-      <td class="code">
-        <%= FzCommon.FzInteger.to_human_bytes(device.rx_bytes) %> received
-        <br>
-        <%= FzCommon.FzInteger.to_human_bytes(device.tx_bytes) %> sent
-      </td>
-      <td class="code"><%= device.public_key %></td>
-      <td id={"device-#{device.id}-inserted-at"} data-timestamp={device.inserted_at} phx-hook="FormatTimestamp">…</td>
-      <td id={"device-#{device.id}-updated-at"} data-timestamp={device.updated_at} phx-hook="FormatTimestamp">…</td>
-    </tr>
-  <% end %>
+        <%= if @show_user do %>
+          <td>
+            <%= live_redirect(device.user.email,
+              to: ~p"/users/#{device.user}"
+            ) %>
+          </td>
+        <% end %>
+        <td class="code"><%= device.ipv4 %></td>
+        <td class="code"><%= device.ipv6 %></td>
+        <td class="code">
+          <%= device.remote_ip %>
+        </td>
+        <td
+          id={"device-#{device.id}-latest-handshake"}
+          data-timestamp={device.latest_handshake}
+          phx-hook="FormatTimestamp"
+        >
+          …
+        </td>
+        <td class="code">
+          <%= to_human_bytes(device.rx_bytes) %> received <br />
+          <%= to_human_bytes(device.tx_bytes) %> sent
+        </td>
+        <td class="code"><%= device.public_key %></td>
+        <td
+          id={"device-#{device.id}-inserted-at"}
+          data-timestamp={device.inserted_at}
+          phx-hook="FormatTimestamp"
+        >
+          …
+        </td>
+        <td
+          id={"device-#{device.id}-updated-at"}
+          data-timestamp={device.updated_at}
+          phx-hook="FormatTimestamp"
+        >
+          …
+        </td>
+      </tr>
+    <% end %>
   </tbody>
 </table>

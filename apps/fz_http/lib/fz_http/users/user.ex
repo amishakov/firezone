@@ -1,180 +1,30 @@
 defmodule FzHttp.Users.User do
-  @moduledoc """
-  Represents a User.
-  """
-
-  @min_password_length 12
-  @max_password_length 64
-
-  use Ecto.Schema
-  import Ecto.Changeset
-  import FzHttp.Users.PasswordHelpers
-
-  alias FzHttp.{Devices.Device, OIDC.Connection}
+  use FzHttp, :schema
 
   schema "users" do
-    field :uuid, Ecto.UUID, autogenerate: true
-    field :role, Ecto.Enum, values: [:unprivileged, :admin], default: :unprivileged
+    field :role, Ecto.Enum, values: [:unprivileged, :admin]
     field :email, :string
+    field :password_hash, :string
+
     field :last_signed_in_at, :utc_datetime_usec
     field :last_signed_in_method, :string
-    field :password_hash, :string
-    field :sign_in_token, :string
+
+    field :sign_in_token, :string, virtual: true, redact: true
+    field :sign_in_token_hash, :string
     field :sign_in_token_created_at, :utc_datetime_usec
-    field :disabled_at, :utc_datetime_usec
 
-    # VIRTUAL FIELDS
+    # Virtual fields
+    field :password, :string, virtual: true, redact: true
+    field :password_confirmation, :string, virtual: true, redact: true
+
+    # Virtual fields that can be hydrated
     field :device_count, :integer, virtual: true
-    field :password, :string, virtual: true
-    field :password_confirmation, :string, virtual: true
-    field :current_password, :string, virtual: true
 
-    has_many :devices, Device, on_delete: :delete_all
-    has_many :oidc_connections, Connection, on_delete: :delete_all
+    has_many :devices, FzHttp.Devices.Device
+    has_many :oidc_connections, FzHttp.Auth.OIDC.Connection
+    has_many :api_tokens, FzHttp.ApiTokens.ApiToken
 
-    timestamps(type: :utc_datetime_usec)
+    field :disabled_at, :utc_datetime_usec
+    timestamps()
   end
-
-  def create_changeset(user, attrs \\ %{}) do
-    user
-    |> cast(attrs, [
-      :role,
-      :email,
-      :password_hash,
-      :password,
-      :password_confirmation
-    ])
-    |> validate_required([:email])
-    |> validate_password_equality()
-    |> validate_length(:password, min: @min_password_length, max: @max_password_length)
-    |> validate_format(:email, ~r/@/)
-    |> unique_constraint(:email)
-    |> put_password_hash()
-  end
-
-  # Sign in token
-  # XXX: Map keys must be strings for this approach to work. Refactor to something that is key
-  # type agnostic.
-  # If password isn't being changed, remove it from list of attributes to validate
-  def update_changeset(
-        user,
-        %{
-          "password" => nil,
-          "password_confirmation" => nil,
-          "current_password" => nil
-        } = attrs
-      ) do
-    update_changeset(
-      user,
-      Map.drop(attrs, ["password", "password_confirmation", "current_password"])
-    )
-  end
-
-  # If password isn't being changed, remove it from list of attributes to validate
-  def update_changeset(
-        user,
-        %{"password" => "", "password_confirmation" => "", "current_password" => ""} = attrs
-      ) do
-    update_changeset(
-      user,
-      Map.drop(attrs, ["password", "password_confirmation", "current_password"])
-    )
-  end
-
-  # Password and other fields are being changed
-  def update_changeset(
-        user,
-        %{
-          "password" => _password,
-          "password_confirmation" => _password_confirmation,
-          "current_password" => _current_password
-        } = attrs
-      ) do
-    user
-    |> cast(attrs, [:role, :email, :password, :password_confirmation, :current_password])
-    |> validate_required([:email, :password, :password_confirmation, :current_password])
-    |> validate_format(:email, ~r/@/)
-    |> verify_current_password(user)
-    |> validate_length(:password, min: @min_password_length, max: @max_password_length)
-    |> validate_password_equality()
-    |> put_password_hash()
-    |> validate_required([:password_hash])
-  end
-
-  # Email updated from an admin
-  def update_changeset(
-        user,
-        %{
-          "email" => _email,
-          "password" => "",
-          "password_confirmation" => ""
-        } = attrs
-      ) do
-    update_changeset(user, Map.drop(attrs, ["password", "password_confirmation"]))
-  end
-
-  # Password updated from token or admin
-  def update_changeset(
-        user,
-        %{
-          "password" => _password,
-          "password_confirmation" => _password_confirmation
-        } = attrs
-      ) do
-    user
-    |> cast(attrs, [:email, :password, :password_confirmation])
-    |> validate_required([:email, :password, :password_confirmation])
-    |> validate_format(:email, ~r/@/)
-    |> validate_length(:password, min: @min_password_length, max: @max_password_length)
-    |> validate_password_equality()
-    |> put_password_hash()
-    |> validate_required([:password_hash])
-  end
-
-  # Only email being updated
-  def update_changeset(user, %{"email" => _email} = attrs) do
-    user
-    |> cast(attrs, [:email])
-    |> validate_required([:email])
-    |> validate_format(:email, ~r/@/)
-  end
-
-  # Promotion / Demotion
-  def update_changeset(user, %{role: _role} = attrs) do
-    user
-    |> cast(attrs, [:role])
-    |> validate_required([:role])
-  end
-
-  # Password reset token
-  def update_changeset(
-        user,
-        %{sign_in_token: _token, sign_in_token_created_at: _created_at} = attrs
-      ) do
-    cast(user, attrs, [:sign_in_token, :sign_in_token_created_at])
-  end
-
-  # XXX: Invalidate password reset when user is updated
-  def update_changeset(user, %{} = attrs) do
-    changeset(user, attrs)
-  end
-
-  def changeset(user, attrs) do
-    user
-    |> cast(attrs, [:email, :last_signed_in_method, :last_signed_in_at])
-  end
-
-  defp verify_current_password(
-         %Ecto.Changeset{
-           changes: %{current_password: _}
-         } = changeset,
-         user
-       ) do
-    case Argon2.check_pass(user, changeset.changes.current_password) do
-      {:ok, _user} -> changeset |> delete_change(:current_password)
-      {:error, error_msg} -> changeset |> add_error(:current_password, error_msg)
-    end
-  end
-
-  defp verify_current_password(changeset, _user), do: changeset
 end

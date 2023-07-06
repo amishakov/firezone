@@ -1,18 +1,18 @@
 defmodule FzHttpWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :fz_http
+  alias FzHttpWeb.ProxyHeaders
+  alias FzHttpWeb.HeaderHelpers
   alias FzHttpWeb.Session
 
-  if Application.get_env(:fz_http, FzHttpWeb.Endpoint, :proxy_forwarded) do
-    plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
-  end
+  plug FzHttpWeb.Plug.PathPrefix
 
-  if Application.get_env(:fz_http, :sql_sandbox) do
+  if Application.compile_env(:fz_http, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
   end
 
   socket "/socket", FzHttpWeb.UserSocket,
     websocket: [
-      connect_info: [:peer_data, :x_headers, :uri],
+      connect_info: [:user_agent, :peer_data, :x_headers, :uri],
       # XXX: channel token should prevent CSWH but double check
       check_origin: false
     ],
@@ -21,11 +21,16 @@ defmodule FzHttpWeb.Endpoint do
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [
       connect_info: [
+        :user_agent,
+        :peer_data,
+        :x_headers,
+        :uri,
         session: {Session, :options, []}
       ],
       # XXX: csrf token should prevent CSWH but double check
       check_origin: false
-    ]
+    ],
+    longpoll: false
 
   # Serve at "/" the static files from "priv/static" directory.
   #
@@ -35,7 +40,7 @@ defmodule FzHttpWeb.Endpoint do
     at: "/",
     from: :fz_http,
     gzip: false,
-    only: ~w(dist fonts images browserconfig.xml robots.txt)
+    only: FzHttpWeb.static_paths()
 
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
@@ -65,6 +70,11 @@ defmodule FzHttpWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug(:session)
+
+  if HeaderHelpers.proxied?() do
+    plug ProxyHeaders
+  end
+
   plug FzHttpWeb.Router
 
   defp session(conn, _opts) do

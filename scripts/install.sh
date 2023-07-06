@@ -1,203 +1,224 @@
 #!/bin/bash
 set -e
 
-osCheck () {
-  os=`uname -s`
-  if [ ! $os = "Linux" ]; then
-    echo "Please ensure you're running this script on Linux and try again."
-    exit
+dockerCheck () {
+  if ! type docker > /dev/null; then
+    echo "docker not found. Please install docker and try again."
+    exit 1
   fi
+
+  if command docker compose &> /dev/null; then
+    dc="docker compose"
+  else
+    if command -v docker-compose &> /dev/null; then
+      dc="docker-compose"
+    else
+      echo "Error: Docker Compose not found. Please install Docker Compose version 2 or higher."
+      exit 1
+    fi
+  fi
+
+  set +e
+  $dc version | grep -q "v2"
+  if [ $? -ne 0 ]; then
+    echo "Error: Automatic installation is only supported with Docker Compose version 2 or higher."
+    echo "Please upgrade Docker Compose or use the manual installation method: https://docs.firezone.dev/deploy/docker"
+    exit 1
+  fi
+  set -e
 }
 
 curlCheck () {
   if ! type curl > /dev/null; then
-    echo 'curl not found. Please install curl to use this script.'
-    exit
+    echo "curl not found. Please install curl to use this script."
+    exit 1
   fi
 }
 
 capture () {
   if type curl > /dev/null; then
-    if [ ! -z "$telemetry_id" ]; then
+    if [ ! -z "$tid" ]; then
       curl -s -XPOST \
-        -H 'Content-Type: application/json' \
+        -m 5 \
+        -H "Content-Type: application/json" \
         -d "{
           \"api_key\": \"phc_ubuPhiqqjMdedpmbWpG2Ak3axqv5eMVhFDNBaXl9UZK\",
           \"event\": \"$1\",
           \"properties\": {
-            \"distinct_id\": \"$telemetry_id\",
+            \"distinct_id\": \"$tid\",
             \"email\": \"$2\"
           }
         }" \
-        https://telemetry.firez.one/capture/ > /dev/null \
+        https://t.firez.one/capture/ > /dev/null \
         || true
     fi
   fi
 }
+
+promptInstallDir() {
+  read -p "$1" installDir
+  if [ -z "$installDir" ]; then
+    installDir=$defaultInstallDir
+  fi
+  if ! test -d $installDir; then
+    mkdir $installDir
+  fi
+}
+
+promptExternalUrl() {
+  read -p "$1" externalUrl
+  # Remove trailing slash if present
+  externalUrl=$(echo $externalUrl | sed "s:/*$::")
+  if [ -z "$externalUrl" ]; then
+    externalUrl=$defaultExternalUrl
+  fi
+}
+
 promptEmail() {
-  echo $1
-  read adminEmail
+  read -p "$1" adminEmail
   case $adminEmail in
-    *@*) adminUser=$adminEmail;;
-    *) promptEmail "Please provide a valid email: "
+    *@*)
+      adminUser=$adminEmail
+      ;;
+    *)
+      promptEmail "Please provide a valid email: "
+      ;;
   esac
 }
 
 promptContact() {
-  echo "Could we email you to ask for product feedback? Firezone depends heavily on input from users like you to steer development. (Y/n): "
-  read contact
+  read -p "Could we email you to ask for product feedback? Firezone depends heavily on input from users like you to steer development. (Y/n): " contact
   case $contact in
-    n);;
-    N);;
-    *) capture "contactOk" $adminUser
+    n|N)
+      ;;
+    *)
+      capture "contactOk" $adminUser
+      ;;
   esac
 }
 
-wireguardCheck() {
-  if ! test -f /sys/module/wireguard/version; then
-    if test -d /lib/modules/$(uname -r) && test -f `find /lib/modules/$(uname -r) -type f -name 'wireguard.ko'`; then
-      echo "WireGuard kernel module found, but not loaded."
-      echo "Load it with 'sudo modprobe wireguard' and run this install script again"
-    else
-      echo "Error! WireGuard not detected. Please upgrade your kernel to at least 5.6 or install the WireGuard kernel module."
-      echo "See more at https://www.wireguard.com/install/"
-    fi
-    exit
-  fi
-}
-
-kernelCheck() {
-  major=`uname -r | cut -d'.' -f1`
-  if [ "$major" -lt "5" ]; then
-    echo "Kernel version `uname -r ` is not supported. Please upgrade to 5.0 or higher."
-    exit
-  fi
-}
-
-# * determines distro; aborts if it can't detect or is not supported
-mapReleaseToDistro() {
-  hostinfo=`hostnamectl | egrep -i '(opera|arch)'`
-  image_sub_string=''
-  if [[ "$hostinfo" =~ .*"Debian GNU/Linux 10".*   && "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="debian10-x64"
-  elif [[ "$hostinfo" =~ .*"Debian GNU/Linux 10".* && "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="debian10-arm64"
-  elif [[ "$hostinfo" =~ .*"Debian GNU/Linux 11".* && "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="debian11-x64"
-  elif [[ "$hostinfo" =~ .*"Debian GNU/Linux 11".* &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="debian11-arm64"
-  elif [[ "$hostinfo" =~ .*"Amazon Linux 2".*      &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="amazonlinux2-x64"
-  elif [[ "$hostinfo" =~ .*"Amazon Linux 2".*      &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="amazonlinux2-arm64"
-  elif [[ "$hostinfo" =~ .*"Fedora 33".*           &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="fedora33-x64"
-  elif [[ "$hostinfo" =~ .*"Fedora 33".*           &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="fedora33-arm64"
-  elif [[ "$hostinfo" =~ .*"Fedora 34".*           &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="fedora34-x64"
-  elif [[ "$hostinfo" =~ .*"Fedora 34".*           &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="fedora34-arm64"
-  elif [[ "$hostinfo" =~ .*"Fedora Linux 3"(5|6).*     &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="fedora35-x64"
-  elif [[ "$hostinfo" =~ .*"Fedora Linux 3"(5|6).*     &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="fedora35-arm64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*        &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="ubuntu1804-x64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 18.04".*        &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="ubuntu1804-arm64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 2"(0|1|2)".04".*  &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="ubuntu2004-x64"
-  elif [[ "$hostinfo" =~ .*"Ubuntu 2"(0|1|2)".04".*  &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="ubuntu2004-arm64"
-  elif [[ "$hostinfo" =~ .*"CentOS Linux 7".*      &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="centos7-x64"
-  elif [[ "$hostinfo" =~ .*"CentOS Stream 8".*     &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="centos8-x64"
-  elif [[ "$hostinfo" =~ .*"CentOS Stream 8".*     &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="centos8-arm64"
-  elif [[ "$hostinfo" =~ .*"CentOS Linux 8".*      &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="centos8-x64"
-  elif [[ "$hostinfo" =~ .*"CentOS Linux 8".*      &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="centos8-arm64"
-  elif [[ "$hostinfo" =~ .*"Rocky Linux 8".*       &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="centos8-x64"
-  elif [[ "$hostinfo" =~ .*"Rocky Linux 8".*       &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="centos8-arm64"
-  elif [[ "$hostinfo" =~ .*"AlmaLinux 8".*         &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="centos8-x64"
-  elif [[ "$hostinfo" =~ .*"AlmaLinux 8".*         &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="centos8-arm64"
-  elif [[ "$hostinfo" =~ .*"VzLinux 8".*           &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="centos8-x64"
-  elif [[ "$hostinfo" =~ .*"VzLinux 8".*           &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="centos8-arm64"
-  elif [[ "$hostinfo" =~ .*"CentOS Stream 9".*     &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="centos9-x64"
-  elif [[ "$hostinfo" =~ .*"CentOS Stream 9".*     &&  "$hostinfo" =~ .*"arm64" ]]; then
-     image_sub_string="centos9-arm64"
-  elif [[ "$hostinfo" =~ .*"openSUSE Leap 15".*    &&  "$hostinfo" =~ .*"x86" ]]; then
-     image_sub_string="opensuse15-x64"
-  fi
-
-  if [ -z "$image_sub_string" ]; then
-    echo "Did not detect a supported Linux distribution. Try using the manual installation method using a release package from a similar distribution. Aborting."
-    exit
-  fi
-
-  latest_release=`
-    curl --silent https://api.github.com/repos/firezone/firezone/releases/latest |
-    grep browser_download_url |
-    cut -d: -f2,3 |
-    sed 's/\"//g' |
-    grep $image_sub_string
-  `
-  echo "url: "$latest_release
-  eval "$1='$latest_release'" # return url to 1st param
-}
-
-installAndDownloadArtifact() {
-  url=$1
-  file=`basename $url`
-  echo "Downloading: $url"
-  cd /tmp
-  curl --progress-bar -L $url --output $file
-  echo "Installing: $file"
-  if [[ "$url" =~ .*"deb".* ]]; then
-    sudo dpkg -i $file
-  else
-    sudo rpm -i --force $file
-  fi
+promptTelemetry() {
+  read -p "Firezone collects crash and performance logs to help us improve the product. Would you like to disable this? (N/y): " telem
+  case $telem in
+    y|Y)
+      telemEnabled="false"
+      ;;
+    *)
+      telemEnabled="true"
+      ;;
+  esac
 }
 
 firezoneSetup() {
-  conf="/opt/firezone/embedded/cookbooks/firezone/attributes/default.rb"
-  sudo sed -i "s/firezone@localhost/$1/" $conf
-  sudo sed -i "s/default\['firezone']\['external_url'].*/default['firezone']['external_url'] = 'https:\/\/$public_ip'/" $conf
-  sudo firezone-ctl reconfigure
-  sudo firezone-ctl create-or-reset-admin
+  export FZ_INSTALL_DIR=$installDir
+
+  if ! test -f $installDir/docker-compose.yml; then
+    os_type="$(uname -s)"
+    case "${os_type}" in
+      Linux*)
+        file=docker-compose.prod.yml
+        ;;
+      *)
+        file=docker-compose.desktop.yml
+        ;;
+    esac
+    curl -fsSL https://raw.githubusercontent.com/firezone/firezone/master/$file -o $installDir/docker-compose.yml
+  fi
+  db_pass=$(od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo)
+  docker run --rm firezone/firezone bin/gen-env > "$installDir/.env"
+  sed -i.bak "s/DEFAULT_ADMIN_EMAIL=.*/DEFAULT_ADMIN_EMAIL=$1/" "$installDir/.env"
+  sed -i.bak "s~EXTERNAL_URL=.*~EXTERNAL_URL=$2~" "$installDir/.env"
+  sed -i.bak "s/DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$db_pass/" "$installDir/.env"
+  echo "TELEMETRY_ENABLED=$telemEnabled" >> "$installDir/.env"
+  echo "TID=$tid" >> "$installDir/.env"
+
+  LATEST_VERSION=$(curl -fsSL https://api.github.com/repos/firezone/firezone/releases/latest | grep -w tag_name | cut -d '"' -f 4)
+  sed -i.bak "s~VERSION=.*~VERSION=${LATEST_VERSION}~" "$installDir/.env"
+
+  # XXX: This causes perms issues on macOS with postgres
+  # echo "UID=$(id -u)" >> $installDir/.env
+  # echo "GID=$(id -g)" >> $installDir/.env
+
+  # Set DATABASE_PASSWORD explicitly here in case the user has this var set in their shell
+  DATABASE_PASSWORD=$db_pass $dc -f $installDir/docker-compose.yml up -d postgres
+  echo "Waiting for DB to boot..."
+  sleep 5
+  $dc -f $installDir/docker-compose.yml logs postgres
+  echo "Resetting DB password..."
+  $dc -f $installDir/docker-compose.yml exec postgres psql -p 5432 -U postgres -d firezone -h 127.0.0.1 -c "ALTER ROLE postgres WITH PASSWORD '${db_pass}'"
+  echo "Migrating DB..."
+  $dc -f $installDir/docker-compose.yml run -e TELEMETRY_ID="${tid}" --rm firezone bin/migrate
+  echo "Creating admin..."
+  $dc -f $installDir/docker-compose.yml run -e TELEMETRY_ID="${tid}" --rm firezone bin/create-or-reset-admin
+  echo "Upping firezone services..."
+  $dc -f $installDir/docker-compose.yml up -d firezone caddy
+
+  displayLogo
+
+cat << EOF
+Installation complete!
+
+You should now be able to log into the Web UI at $externalUrl with the
+following credentials:
+
+`grep DEFAULT_ADMIN_EMAIL $installDir/.env`
+`grep DEFAULT_ADMIN_PASSWORD $installDir/.env`
+
+EOF
+}
+
+displayLogo() {
+cat << EOF
+
+                                      ::
+                                       !!:
+                                       .??^
+                                        ~J?^
+                                        :???.
+                                        .??J^
+                                        .??J!
+                                        .??J!
+                                        ^J?J~
+                                        !???:
+                                       .???? ::
+                                       ^J?J! :~:
+                                       7???: :~~
+                                      .???7  ~~~.
+                                      :??J^ :~~^
+                                      :???..~~~:
+    .............                     .?J7 ^~~~        ....
+ ..        ......::....                ~J!.~~~^       ::..
+                  ...:::....            !7^~~~^     .^: .
+                      ...:::....         ~~~~~~:. .:~^ .
+                         ....:::....      .~~~~~~~~~:..
+                             ...::::....   .::^^^^:...
+                                .....:::.............
+                                    .......:::.....
+
+EOF
 }
 
 main() {
-  adminUser=''
-  kernelCheck
-  wireguardCheck
-  promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance:"
+  defaultExternalUrl="https://$(hostname)"
+  adminUser=""
+  externalUrl=""
+  defaultInstallDir="$HOME/.firezone"
+  promptEmail "Enter the administrator email you'd like to use for logging into this Firezone instance: "
+  promptInstallDir "Enter the desired installation directory ($defaultInstallDir): "
+  promptExternalUrl "Enter the external URL that will be used to access this instance. ($defaultExternalUrl): "
   promptContact
-  releaseUrl=''
-  mapReleaseToDistro releaseUrl
-  echo "Press <ENTER> to install or Ctrl-C to abort."
-  read
-  installAndDownloadArtifact $releaseUrl
-  firezoneSetup $adminUser
+  promptTelemetry
+  read -p "Press <ENTER> to install or Ctrl-C to abort."
+  if [ $telemEnabled = "true" ]; then
+    capture "install" "email-not-collected@dummy.domain"
+  fi
+  firezoneSetup $adminUser $externalUrl
 }
 
-osCheck
+dockerCheck
 curlCheck
 
-telemetry_id=`od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo`
-public_ip=`curl --silent ifconfig.me`
-
-capture "install" "email-not-collected@dummy.domain"
+telemetry_id=$(od -vN "8" -An -tx1 /dev/urandom | tr -d " \n" ; echo)
+tid=${1:-$telemetry_id}
 
 main

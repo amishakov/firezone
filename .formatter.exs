@@ -1,5 +1,8 @@
-# Used by "mix format"
 [
-  inputs: ["mix.exs", "config/*.exs"],
-  subdirectories: ["apps/*"]
+  plugins: [Phoenix.LiveView.HTMLFormatter],
+  subdirectories: ["apps/*"],
+  inputs: [
+    "*.{ex,exs}",
+    "{config,priv}/**/*.{ex,exs}"
+  ]
 ]

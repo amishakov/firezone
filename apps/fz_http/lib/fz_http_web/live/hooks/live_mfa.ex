@@ -2,19 +2,22 @@ defmodule FzHttpWeb.LiveMFA do
   @moduledoc """
   Guards content behind MFA
   """
-
+  use Phoenix.Component
+  use FzHttpWeb, :helper
   import Phoenix.LiveView
-  alias FzHttp.MFA
-  alias FzHttpWeb.Router.Helpers, as: Routes
+  alias FzHttp.Auth.MFA
 
-  def on_mount(_, _params, session, socket) do
-    with %{"mfa_required_at" => mfa_required_at} <- session,
-         %{last_used_at: last_used_at} <- MFA.most_recent_method(socket.assigns.current_user),
-         :gt <- DateTime.compare(mfa_required_at, last_used_at) do
-      {:halt, redirect(socket, to: Routes.mfa_auth_path(socket, :auth))}
+  def on_mount(_arg, _params, %{"logged_in_at" => logged_in_at}, socket) do
+    with {:ok, mfa} <- MFA.fetch_last_used_method_by_user_id(socket.assigns.current_user.id),
+         true <- DateTime.compare(logged_in_at, mfa.last_used_at) == :gt do
+      {:halt, redirect(socket, to: ~p"/mfa/auth/#{mfa.id}")}
     else
-      _ ->
-        {:cont, socket}
+      {:error, :not_found} -> {:cont, socket}
+      false -> {:cont, socket}
     end
+  end
+
+  def on_mount(_arg, _params, _session, socket) do
+    {:halt, redirect(socket, to: ~p"/")}
   end
 end

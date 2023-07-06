@@ -1,9 +1,7 @@
-apps/fg_http/assets/node_modules
-apps/fg_http/priv/static
+apps/fz_http/assets/node_modules
+apps/fz_http/priv/static/dist
+apps/fz_http/priv/cert
 _build
-apps/fg_http/_build
-apps/fg_wall/_build
-apps/fg_vpn/_build
 **/cover
 docs
 .DS_Store

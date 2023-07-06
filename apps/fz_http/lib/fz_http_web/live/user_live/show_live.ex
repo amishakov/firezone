@@ -5,13 +5,14 @@ defmodule FzHttpWeb.UserLive.Show do
   """
   use FzHttpWeb, :live_view
 
-  alias FzHttp.{Devices, OIDC, Repo, Users}
+  alias FzHttp.{Devices, Auth.OIDC, Users}
   alias FzHttpWeb.ErrorHelpers
 
   @impl Phoenix.LiveView
+
   def mount(%{"id" => user_id} = _params, _session, socket) do
-    user = Users.get_user!(user_id)
-    devices = Devices.list_devices(user)
+    {:ok, user} = Users.fetch_user_by_id(user_id, socket.assigns.subject)
+    {:ok, devices} = Devices.list_devices_for_user(user, socket.assigns.subject)
     connections = OIDC.list_connections(user)
 
     {:ok,
@@ -20,7 +21,8 @@ defmodule FzHttpWeb.UserLive.Show do
      |> assign(:device_config, socket.assigns[:device_config])
      |> assign(:connections, connections)
      |> assign(:user, user)
-     |> assign(:page_title, "Users")}
+     |> assign(:page_title, "Users")
+     |> assign(:rules_path, ~p"/rules")}
   end
 
   @doc """
@@ -28,12 +30,14 @@ defmodule FzHttpWeb.UserLive.Show do
   """
   @impl Phoenix.LiveView
   def handle_params(%{"id" => user_id} = _params, _url, socket) do
-    user = Users.get_user!(user_id)
-    devices = Devices.list_devices(user.id)
+    {:ok, user} = Users.fetch_user_by_id(user_id, socket.assigns.subject)
+    {:ok, devices} = Devices.list_devices_for_user(user, socket.assigns.subject)
 
-    {:noreply,
-     socket
-     |> assign(:devices, devices)}
+    socket =
+      socket
+      |> assign(:devices, devices)
+
+    {:noreply, socket}
   end
 
   @impl Phoenix.LiveView
@@ -43,17 +47,16 @@ defmodule FzHttpWeb.UserLive.Show do
        socket
        |> put_flash(:error, "Use the account section to delete your account.")}
     else
-      user = Users.get_user!(user_id) |> Repo.preload(:devices)
+      {:ok, user} = Users.fetch_user_by_id(user_id, socket.assigns.subject)
 
-      case Users.delete_user(user) do
+      case Users.delete_user(user, socket.assigns.subject) do
         {:ok, _} ->
-          for device <- user.devices, do: @events_module.delete_device(device)
           FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
 
           {:noreply,
            socket
            |> put_flash(:info, "User deleted successfully.")
-           |> push_redirect(to: Routes.user_index_path(socket, :index))}
+           |> push_redirect(to: ~p"/users")}
 
         {:error, changeset} ->
           {:noreply,
@@ -68,37 +71,33 @@ defmodule FzHttpWeb.UserLive.Show do
 
   @impl Phoenix.LiveView
   def handle_event(action, %{"user_id" => user_id}, socket) when action in ~w(promote demote) do
-    if user_id == "#{socket.assigns.current_user.id}" do
-      {:noreply,
-       socket
-       |> put_flash(:error, "Changing your own role is not supported.")}
-    else
-      user = Users.get_user!(user_id)
-
-      role =
-        case action do
-          "promote" -> :admin
-          "demote" -> :unprivileged
-        end
-
-      case Users.update_user(user, %{role: role}) do
-        {:ok, user} ->
-          # Force reconnect with new role
-          FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
-
-          {:noreply,
-           socket
-           |> assign(:user, user)
-           |> put_flash(:info, "User updated successfully.")}
-
-        {:error, changeset} ->
-          {:noreply,
-           socket
-           |> put_flash(
-             :error,
-             "Error updating user: #{ErrorHelpers.aggregated_errors(changeset)}"
-           )}
+    role =
+      case action do
+        "promote" -> :admin
+        "demote" -> :unprivileged
       end
+
+    with {:ok, user} <- Users.fetch_user_by_id(user_id, socket.assigns.subject),
+         {:ok, user} <- Users.update_user(user, %{role: role}, socket.assigns.subject) do
+      # Force reconnect with new role
+      FzHttpWeb.Endpoint.broadcast("users_socket:#{user.id}", "disconnect", %{})
+
+      socket =
+        socket
+        |> assign(:user, user)
+        |> put_flash(:info, "User updated successfully.")
+
+      {:noreply, socket}
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        message = "Error, #{ErrorHelpers.aggregated_errors(changeset)}"
+        socket = put_flash(socket, :error, message)
+        {:noreply, socket}
+
+      {:error, reason} ->
+        message = "Error updating user: #{inspect(reason)}"
+        socket = put_flash(socket, :error, message)
+        {:noreply, socket}
     end
   end
 

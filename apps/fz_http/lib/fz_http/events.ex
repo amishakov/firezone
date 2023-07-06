@@ -3,29 +3,68 @@ defmodule FzHttp.Events do
   Handles interfacing with other processes in the system.
   """
 
-  alias FzHttp.{Devices, Rules}
+  alias FzHttp.{Devices, Rules, Users, Notifications}
+
+  require Logger
 
   # set_config is used because devices need to be re-evaluated in case a
   # device is added to a User that's not active.
-  # XXX: In the future maybe update only this peer in fz_vpn
-  def update_device(_device) do
-    GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()})
+  def add("devices", device) do
+    with :ok <- GenServer.call(wall_pid(), {:add_device, Devices.setting_projection(device)}),
+         :ok <- GenServer.call(vpn_pid(), {:set_config, Devices.to_peer_list()}) do
+      :ok
+    else
+      _err ->
+        Notifications.add(%{
+          type: :error,
+          message: """
+          #{device.name} was created successfully but an error occurred applying its
+          configuration to the WireGuard interface. Check the logs for more
+          information.
+          """,
+          timestamp: DateTime.utc_now(),
+          user: Users.fetch_user_by_id!(device.user_id).email
+        })
+    end
   end
 
-  def delete_device(public_key) when is_binary(public_key) do
-    GenServer.call(vpn_pid(), {:remove_peer, public_key})
+  def add("rules", rule) do
+    GenServer.call(wall_pid(), {:add_rule, Rules.setting_projection(rule)})
   end
 
-  def delete_device(device) when is_struct(device) do
-    GenServer.call(vpn_pid(), {:remove_peer, device.public_key})
+  def add("users", user) do
+    # Security note: It's important to let an exception here crash this service
+    # otherwise, nft could have succeeded in adding the user's set but not the rules
+    # this means that in `update_device` add_device can succeed adding the device to the user's set
+    # but any rule for the user won't take effect since the user rule doesn't exists.
+    GenServer.call(wall_pid(), {:add_user, Users.setting_projection(user)})
   end
 
-  def add_rule(rule) do
-    GenServer.call(wall_pid(), {:add_rule, Rules.nftables_spec(rule)})
+  def delete("devices", device) do
+    with :ok <- GenServer.call(wall_pid(), {:delete_device, Devices.setting_projection(device)}),
+         :ok <- GenServer.call(vpn_pid(), {:remove_peer, device.public_key}) do
+      :ok
+    else
+      _err ->
+        Notifications.add(%{
+          type: :error,
+          message: """
+          #{device.name} was deleted successfully but an error occurred applying its
+          configuration to the WireGuard interface. Check the logs for more
+          information.
+          """,
+          timestamp: DateTime.utc_now(),
+          user: Users.fetch_user_by_id!(device.user_id).email
+        })
+    end
   end
 
-  def delete_rule(rule) do
-    GenServer.call(wall_pid(), {:delete_rule, Rules.nftables_spec(rule)})
+  def delete("rules", rule) do
+    GenServer.call(wall_pid(), {:delete_rule, Rules.setting_projection(rule)})
+  end
+
+  def delete("users", user) do
+    GenServer.call(wall_pid(), {:delete_user, Users.setting_projection(user)})
   end
 
   def set_config do
@@ -33,7 +72,15 @@ defmodule FzHttp.Events do
   end
 
   def set_rules do
-    GenServer.call(wall_pid(), {:set_rules, Rules.to_nftables()})
+    GenServer.call(
+      wall_pid(),
+      {:set_rules,
+       %{
+         users: Users.as_settings(),
+         devices: Devices.as_settings(),
+         rules: Rules.as_settings()
+       }}
+    )
   end
 
   def vpn_pid do

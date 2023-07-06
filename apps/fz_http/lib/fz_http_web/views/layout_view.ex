@@ -1,5 +1,6 @@
 defmodule FzHttpWeb.LayoutView do
   use FzHttpWeb, :view
+  import FzHttpWeb.Endpoint, only: [static_path: 1]
 
   @doc """
   Generate a random feedback email to avoid spam.
@@ -13,13 +14,5 @@ defmodule FzHttpWeb.LayoutView do
   """
   def application_version do
     Application.spec(:fz_http, :vsn)
-  end
-
-  @doc """
-  The current github sha, used to link to our Github repo.
-  This is set during application compile time.
-  """
-  def git_sha do
-    Application.fetch_env!(:fz_http, :git_sha)
   end
 end

@@ -5,7 +5,7 @@
   <a href="https://github.com/firezone/firezone/releases">
     <img src="https://img.shields.io/github/v/release/firezone/firezone?color=%23999">
   </a>
-  <a href="https://discourse.firez.one">
+  <a href="https://discourse.firez.one/?utm_source=readme">
     <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=support%20forum&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
   </a>
   <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
@@ -22,25 +22,22 @@
   </a>
 </p>
 
-## [Firezone](https://www.firezone.dev) is a self-hosted VPN server and Linux firewall
+## [Firezone](https://www.firezone.dev/?utm_source=readme) is a self-hosted VPN server and Linux firewall
 
 * Manage remote access through an intuitive web interface and CLI utility.
-* [Deploy on your own infrastructure](https://docs.firezone.dev/docs/deploy) to keep control of your network traffic.
+* [Deploy on your own infrastructure](https://docs.firezone.dev/deploy?utm_source=readme) to keep control of your network traffic.
 * Built on [WireGuard®](https://www.wireguard.com/) to be stable, performant, and lightweight.
 
-![Firezone Architecture](https://user-images.githubusercontent.com/52545545/173246039-a1b37ef2-d885-4535-bca7-f5cd57da21a2.png)
+![Firezone Architecture](https://user-images.githubusercontent.com/52545545/183804397-ae81ca4e-6972-41f9-80d4-b431a077119d.png)
 
 ## Get Started
 
-Follow our [deploy guide](https://docs.firezone.dev/docs/deploy) to install your self-hosted instance of Firezone.
+Follow our [deploy guide](https://docs.firezone.dev/deploy) to install your self-hosted instance of Firezone.
 
-Or, if you're on a [supported platform](https://docs.firezone.dev/docs/deploy/supported-platforms/), try our one-line install script:
+Or, if you're on a [supported platform](https://docs.firezone.dev/deploy/docker/supported-platforms?utm_source=readme),
+try our [auto-install script](https://docs.firezone.dev/deploy/docker/#option-1-automatic-install).
 
-```bash
-bash <(curl -Ls https://github.com/firezone/firezone/raw/master/scripts/install.sh)
-```
-
-Using Firezone for your team? Take a look at our [business tier](https://www.firezone.dev/pricing).
+Using Firezone in production at your organization? Contact us to learn about our [Enterprise Plan](https://www.firezone.dev/contact/sales?utm_source=readme).
 
 ## Features
 
@@ -48,8 +45,7 @@ Using Firezone for your team? Take a look at our [business tier](https://www.fir
 
 * **Fast:** Uses WireGuard® to be [3-4 times](https://wireguard.com/performance/) faster than OpenVPN.
 * **SSO Integration:** Authenticate using any identity provider with an OpenID Connect (OIDC) connector.
-* **No dependencies:** All dependencies are bundled thanks to
-[Chef Omnibus](https://github.com/chef/omnibus).
+* **Containerized:** All dependencies are bundled via Docker.
 * **Simple:** Takes minutes to set up. Manage via a simple CLI.
 * **Secure:** Runs unprivileged. HTTPS enforced. Encrypted cookies.
 * **Firewall included:** Uses Linux [nftables](https://netfilter.org) to block unwanted egress traffic.
@@ -70,13 +66,22 @@ Additional documentation on general usage, troubleshooting, and configuration ca
 
 ## Get Help
 
-If you're looking for help installing and configuring Firezone, we're happy to
-help:
+If you're looking for help installing, configuring, or using Firezone, check our
+community support options:
 
-* [Discussion Forums](https://discourse.firez.one/): ask questions, report bugs, and suggest features
-* [Community Slack](https://www.firezone.dev/slack): join discussions, meet other users, and meet the contributors
-* [Email Us](mailto:team@firezone.dev): we're always happy to chat
+1. [Discussion Forums](https://discourse.firez.one/?utm_source=readme): Ask questions, report
+  bugs, and suggest features.
+1. [Public Slack Group](https://join.slack.com/t/firezone-users/shared_invite/zt-111043zus-j1lP_jP5ohv52FhAayzT6w):
+  Join live discussions, meet other users, and get to know the contributors.
+1. [Open a PR](https://github.com/firezone/firezone/issues): Contribute a bugfix
+  or make a contribution to Firezone.
 
+If you need help deploying or maintaining Firezone for your business, consider
+[contacting us about our paid support plan](https://www.firezone.dev/sales?utm_source=readme).
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=firezone/firezone&type=Date)](https://star-history.com/#firezone/firezone&Date)
 
 ## Package Repository
 
@@ -86,7 +91,6 @@ Package repository hosting is graciously provided by  [Cloudsmith](https://cloud
 Cloudsmith is the only fully hosted, cloud-native, universal package management solution, that
 enables your organization to create, store and share packages in any format, to any place, with total
 confidence.
-
 
 ## Developing and Contributing
 

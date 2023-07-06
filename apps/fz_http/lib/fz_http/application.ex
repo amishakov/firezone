@@ -1,18 +1,17 @@
 defmodule FzHttp.Application do
-  # See https://hexdocs.pm/elixir/Application.html
-  # for more information on OTP Applications
-  @moduledoc false
-
   use Application
 
-  alias FzHttp.Telemetry
-
   def start(_type, _args) do
-    # See https://hexdocs.pm/elixir/Supervisor.html
-    # for other strategies and supported options
-    Telemetry.fz_http_started()
-    opts = [strategy: :one_for_one, name: FzHttp.Supervisor]
-    Supervisor.start_link(children(), opts)
+    supervision_tree_mode = FzHttp.Config.fetch_env!(:fz_http, :supervision_tree_mode)
+
+    result =
+      supervision_tree_mode
+      |> children()
+      |> Supervisor.start_link(strategy: :one_for_one, name: __MODULE__.Supervisor)
+
+    :ok = after_start()
+
+    result
   end
 
   # Tell Phoenix to update the endpoint configuration
@@ -22,36 +21,64 @@ defmodule FzHttp.Application do
     :ok
   end
 
-  defp children, do: children(Application.fetch_env!(:fz_http, :supervision_tree_mode))
-
+  # XXX: get rid off this
   defp children(:full) do
-    # Pull in OpenIDConnect config if available
-    openid_connect_providers = Application.get_env(:fz_http, :openid_connect_providers)
-
     [
-      FzHttp.Server,
+      # Infrastructure services
       FzHttp.Repo,
       FzHttp.Vault,
-      FzHttpWeb.Endpoint,
       {Phoenix.PubSub, name: FzHttp.PubSub},
+      {FzHttp.Notifications, name: FzHttp.Notifications},
       FzHttpWeb.Presence,
-      FzHttp.ConnectivityCheckService,
-      FzHttp.TelemetryPingService,
+
+      # Application
+      {Postgrex.Notifications, [name: FzHttp.Repo.Notifications] ++ FzHttp.Repo.config()},
+      FzHttp.Repo.Notifier,
+      FzHttp.Server,
       FzHttp.VpnSessionScheduler,
-      {OpenIDConnect.Worker, openid_connect_providers},
-      {DynamicSupervisor, name: FzHttp.RefresherSupervisor, strategy: :one_for_one},
-      FzHttp.OIDC.RefreshManager
+      FzHttp.Auth,
+      FzHttpWeb.Endpoint,
+
+      # Observability
+      FzHttp.ConnectivityChecks,
+      FzHttp.Telemetry
     ]
   end
 
   defp children(:test) do
     [
-      FzHttp.Server,
+      # Infrastructure services
       FzHttp.Repo,
       FzHttp.Vault,
-      FzHttpWeb.Endpoint,
       {Phoenix.PubSub, name: FzHttp.PubSub},
-      FzHttpWeb.Presence
+      {FzHttp.Notifications, name: FzHttp.Notifications},
+      FzHttpWeb.Presence,
+
+      # Application
+      FzHttp.Server,
+      FzHttp.Auth,
+      FzHttpWeb.Endpoint,
+
+      # Observability
+      FzHttp.ConnectivityChecks,
+      FzHttp.Telemetry
     ]
+  end
+
+  defp children(:database) do
+    [
+      FzHttp.Repo,
+      FzHttp.Vault
+    ]
+  end
+
+  if Mix.env() == :prod do
+    defp after_start do
+      FzHttp.Config.validate_runtime_config!()
+    end
+  else
+    defp after_start do
+      :ok
+    end
   end
 end

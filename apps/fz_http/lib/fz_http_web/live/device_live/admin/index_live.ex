@@ -5,17 +5,27 @@ defmodule FzHttpWeb.DeviceLive.Admin.Index do
   use FzHttpWeb, :live_view
   alias FzHttp.{Devices, Repo}
 
+  @page_title "All Devices"
+  @page_subtitle """
+  Each device corresponds to a WireGuard configuration for connecting to this Firezone server.
+  """
+
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    devices =
-      Devices.list_devices()
-      |> Repo.preload(:user)
-      |> Enum.sort_by(& &1.user_id)
+    with {:ok, devices} <- Devices.list_devices(socket.assigns.subject) do
+      devices =
+        devices
+        |> Repo.preload(:user)
+        |> Enum.sort_by(& &1.user_id)
 
-    {:ok,
-     socket
-     |> assign(:devices, devices)
-     |> assign(:page_title, "All Devices")}
+      socket =
+        socket
+        |> assign(:devices, devices)
+        |> assign(:page_subtitle, @page_subtitle)
+        |> assign(:page_title, @page_title)
+
+      {:ok, socket}
+    end
   end
 
   @doc """

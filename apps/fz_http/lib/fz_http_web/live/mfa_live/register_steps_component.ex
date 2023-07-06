@@ -3,27 +3,25 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
   MFA registration steps
   """
   use Phoenix.Component
-
   import FzHttpWeb.ErrorHelpers
 
   def render_step(assigns) do
-    apply(__MODULE__, assigns[:step], [assigns])
+    apply(__MODULE__, assigns.step, [assigns])
   end
 
   def pick_type(assigns) do
     ~H"""
     <form id="mfa-method-form" phx-target={@parent} phx-submit="next">
       <h4>Choose authenticator type</h4>
-      <hr>
+      <hr />
 
       <div class="control">
         <div>
           <label class="radio">
-            <input type="radio" name="type" value="totp" checked>
+            <input type="radio" name="type" value="totp" id="mfa-method-totp" checked />
             Time-Based One-Time Password
           </label>
         </div>
-
         <!-- Coming Soon
         <div>
           <label class="radio disabled">
@@ -44,38 +42,28 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
   end
 
   def register(assigns) do
-    secret = NimbleTOTP.secret()
+    otpauth_uri =
+      NimbleTOTP.otpauth_uri("Firezone:#{assigns.user.email}", assigns.secret, issuer: "Firezone")
 
     assigns =
-      Map.merge(
-        assigns,
-        %{
-          secret: secret,
-          secret_base32_encoded: Base.encode32(secret),
-          secret_base64_encoded: Base.encode64(secret),
-          uri:
-            NimbleTOTP.otpauth_uri(
-              "Firezone:#{assigns[:user].email}",
-              secret,
-              issuer: "Firezone"
-            )
-        }
-      )
+      assigns
+      |> Map.put(:uri, otpauth_uri)
+      |> Map.put(:secret_base32_encoded, Base.encode32(assigns.secret))
 
     ~H"""
     <form id="mfa-method-form" phx-target={@parent} phx-submit="next">
       <h4>Register Authenticator</h4>
-      <hr>
-
-      <input value={@secret_base64_encoded} type="hidden" name="secret" />
+      <hr />
 
       <div class="has-text-centered">
         <canvas data-qrdata={@uri} id="register-totp" phx-hook="RenderQR" />
 
-        <pre class="mb-4"
-            id="copy-totp-key"
-            phx-hook="ClipboardCopy"
-            data-clipboard={@secret_base32_encoded}><code><%= format_key(@secret_base32_encoded) %></code></pre>
+        <pre
+          class="mb-4"
+          id="copy-totp-key"
+          phx-hook="ClipboardCopy"
+          data-clipboard={@secret_base32_encoded}
+        ><code><%= format_key(@secret_base32_encoded) %></code></pre>
       </div>
 
       <div class="field is-horizontal">
@@ -85,8 +73,17 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
         <div class="field-body">
           <div class="field">
             <p class="control">
-              <input class="input" type="text" name="name"
-                  placeholder="Name" value="My Authenticator" required />
+              <input
+                class={"input #{input_error_class(@changeset, :name)}"}
+                type="text"
+                name="name"
+                value={Map.get(@changeset.changes, :name, "My Authenticator")}
+                placeholder="name"
+                required
+              />
+            </p>
+            <p class="help is-danger">
+              <%= error_tag(@changeset, :name) %>
             </p>
           </div>
         </div>
@@ -99,7 +96,7 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
     ~H"""
     <form id="mfa-method-form" phx-target={@parent} phx-submit="next">
       <h4>Verify Code</h4>
-      <hr>
+      <hr />
 
       <div class="field is-horizontal">
         <div class="field-label is-normal">
@@ -108,8 +105,16 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
         <div class="field-body">
           <div class="field">
             <p class="control">
-              <input class={"input #{input_error_class(@changeset, :code)}"}
-                  type="text" name="code" placeholder="123456" required />
+              <input
+                class={"input #{input_error_class(@changeset, :code)}"}
+                type="text"
+                name="code"
+                placeholder="123456"
+                required
+              />
+            </p>
+            <p class="help is-danger">
+              <%= error_tag(@changeset, :code) %>
             </p>
           </div>
         </div>
@@ -122,11 +127,10 @@ defmodule FzHttpWeb.MFA.RegisterStepsComponent do
     ~H"""
     <form id="mfa-method-form" phx-target={@parent} phx-submit="save">
       Confirm to save this Authentication method.
-
       <%= if !@changeset.valid? do %>
-      <p class="help is-danger">
-        Something went wrong. Try saving again or starting over.
-      </p>
+        <p class="help is-danger">
+          Something went wrong. Try saving again or starting over.
+        </p>
       <% end %>
     </form>
     """

@@ -1,28 +1,14 @@
 defmodule FzHttp.Rules.Rule do
-  @moduledoc """
-  Not really sure what to write here. I'll update this later.
-  """
-
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @rule_dupe_msg "A rule with that IP/CIDR address already exists."
+  use FzHttp, :schema
 
   schema "rules" do
-    field :uuid, Ecto.UUID, autogenerate: true
-    field :destination, EctoNetwork.INET, read_after_writes: true
     field :action, Ecto.Enum, values: [:drop, :accept], default: :drop
+    field :destination, FzHttp.Types.INET
+    field :port_type, Ecto.Enum, values: [:tcp, :udp]
+    field :port_range, FzHttp.Types.Int4Range
 
-    timestamps(type: :utc_datetime_usec)
-  end
+    belongs_to :user, FzHttp.Users.User
 
-  def changeset(rule, attrs) do
-    rule
-    |> cast(attrs, [
-      :action,
-      :destination
-    ])
-    |> validate_required([:action, :destination])
-    |> unique_constraint([:destination, :action], message: @rule_dupe_msg)
+    timestamps()
   end
 end

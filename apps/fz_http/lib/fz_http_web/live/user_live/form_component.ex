@@ -8,7 +8,7 @@ defmodule FzHttpWeb.UserLive.FormComponent do
 
   @impl Phoenix.LiveComponent
   def update(%{action: :new} = assigns, socket) do
-    changeset = Users.new_user()
+    changeset = Users.change_user()
 
     {:ok,
      socket
@@ -27,14 +27,14 @@ defmodule FzHttpWeb.UserLive.FormComponent do
   end
 
   @impl Phoenix.LiveComponent
-  def handle_event("save", %{"user" => user_params}, %{assigns: %{action: :new}} = socket) do
-    case Users.create_unprivileged_user(user_params) do
+  def handle_event("save", %{"user" => attrs}, %{assigns: %{action: :new}} = socket) do
+    case Users.create_user(:unprivileged, attrs, socket.assigns.subject) do
       {:ok, user} ->
         {:noreply,
          socket
          |> assign(:user, user)
          |> put_flash(:info, "User created successfully.")
-         |> push_redirect(to: Routes.user_show_path(socket, :show, user))}
+         |> push_redirect(to: ~p"/users/#{user}")}
 
       {:error, changeset} ->
         {:noreply,

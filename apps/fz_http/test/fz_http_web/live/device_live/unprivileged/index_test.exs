@@ -1,5 +1,5 @@
 defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
-  use FzHttpWeb.ConnCase, async: false
+  use FzHttpWeb.ConnCase, async: true
 
   describe "authenticated/device list" do
     test "includes the device name in the list", %{
@@ -8,7 +8,7 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
     } do
       {:ok, devices: devices} = create_devices(user_id: user.id)
 
-      path = Routes.device_unprivileged_index_path(conn, :index)
+      path = ~p"/user_devices"
       {:ok, _view, html} = live(conn, path)
 
       for device <- devices do
@@ -19,61 +19,97 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
   describe "authenticated but user deleted" do
     test "redirects to not authorized", %{admin_conn: conn} do
-      path = Routes.device_admin_index_path(conn, :index)
+      path = ~p"/devices"
       clear_users()
-      expected_path = Routes.root_path(conn, :index)
+      expected_path = ~p"/"
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
 
   describe "authenticated device management disabled" do
     setup do
-      restore_env(:allow_unprivileged_device_management, false, &on_exit/1)
+      FzHttp.Config.put_config!(:allow_unprivileged_device_management, false)
+      :ok
     end
 
-    test "omits Add Device button", %{unprivileged_conn: conn} do
-      path = Routes.device_unprivileged_index_path(conn, :index)
+    test "prevents navigating to /user_devices/new", %{unprivileged_conn: conn} do
+      path = ~p"/user_devices/new"
+      expected_path = ~p"/"
+
+      assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
+    end
+  end
+
+  describe "authenticated device configuration disabled" do
+    setup do
+      FzHttp.Config.put_config!(:allow_unprivileged_device_configuration, false)
+      :ok
+    end
+
+    @tag fields: ~w(
+      use_default_allowed_ips
+      allowed_ips
+      use_default_dns
+      dns
+      use_default_endpoint
+      endpoint
+      use_default_mtu
+      mtu
+      use_default_persistent_keepalive
+      persistent_keepalive
+      ipv4
+      ipv6
+    )
+    test "hides the customization fields", %{fields: fields, unprivileged_conn: conn} do
+      path = ~p"/user_devices/new"
       {:ok, _view, html} = live(conn, path)
 
-      refute html =~ "Add Device"
+      for field <- fields do
+        refute html =~ "device[#{field}]"
+      end
     end
 
-    test "prevents creating a device", %{unprivileged_conn: conn} do
-      path = Routes.device_unprivileged_index_path(conn, :new)
-      {:ok, view, _html} = live(conn, path)
+    @tag fields: ~w(
+      name
+      description
+      public_key
+      preshared_key
+    )
+    test "renders the needed fields", %{fields: fields, unprivileged_conn: conn} do
+      path = ~p"/user_devices/new"
+      {:ok, _view, html} = live(conn, path)
 
-      view
-      |> element("#create-device")
-      |> render_submit(%{"device" => %{"public_key" => "test-pubkey", "name" => "test-tunnel"}})
-
-      flash = assert_redirected(view, "/")
-      assert flash["error"] == "Not authorized."
+      for field <- fields do
+        assert html =~ "device[#{field}]"
+      end
     end
   end
 
   describe "authenticated/creates device" do
     test "shows new form", %{unprivileged_conn: conn} do
-      path = Routes.device_unprivileged_index_path(conn, :index)
+      path = ~p"/user_devices"
       {:ok, view, _html} = live(conn, path)
 
-      new_view =
-        view
-        |> element("a", "Add Device")
-        |> render_click()
+      view
+      |> element("a", "Add Device")
+      |> render_click()
 
-      assert_patched(view, Routes.device_unprivileged_index_path(conn, :new))
-      assert new_view =~ "Add Device"
-      assert new_view =~ ~s|<form method="post" id="create-device"|
+      assert_patch(view, ~p"/user_devices/new")
     end
 
     test "creates device", %{unprivileged_conn: conn} do
-      path = Routes.device_unprivileged_index_path(conn, :new)
+      path = ~p"/user_devices/new"
       {:ok, view, _html} = live(conn, path)
 
       new_view =
         view
         |> element("#create-device")
-        |> render_submit(%{"device" => %{"public_key" => "test-pubkey", "name" => "test-tunnel"}})
+        |> render_submit(%{
+          "device" => %{
+            "public_key" => "8IkpsAXiqhqNdc9PJS76YeJjig4lyTBaf8Rm7gTApXk=",
+            "name" => "test-tunnel"
+          }
+        })
 
       assert new_view =~ "Device added!"
     end
@@ -81,8 +117,8 @@ defmodule FzHttpWeb.DeviceLive.Unprivileged.IndexTest do
 
   describe "unauthenticated" do
     test "mount redirects to session path", %{unauthed_conn: conn} do
-      path = Routes.device_admin_index_path(conn, :index)
-      expected_path = Routes.root_path(conn, :index)
+      path = ~p"/user_devices"
+      expected_path = ~p"/"
       assert {:error, {:redirect, %{to: ^expected_path}}} = live(conn, path)
     end
   end
